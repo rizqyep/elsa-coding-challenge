@@ -1,6 +1,6 @@
 # Technical requirements (TRD)
 
-Status: **sections 1–5 draft for review** · Last updated: 2026-09-28
+Status: **sections 1–8 reviewed; 9–11 draft for review** · Last updated: 2026-09-28
 
 How the Go backend is built. It implements the agreed [requirements](requirements.md) and the [system design](../system-design/README.md), and follows the decisions in [context](context.md) (D1–D16). It doesn't repeat the architecture; it adds what's needed to write the code.
 
@@ -11,12 +11,12 @@ How the Go backend is built. It implements the agreed [requirements](requirement
 | 3 | [Domain model](#3-domain-model) | draft |
 | 4 | [Redis: keys and Lua scripts](#4-redis-keys-and-lua-scripts) | draft |
 | 5 | [PostgreSQL: schema, migrations, seed data](#5-postgresql-schema-migrations-seed-data) | draft |
-| 6 | Contracts: OpenAPI, AsyncAPI, JSON Schema | pending |
-| 7 | Gateway internals | pending |
-| 8 | Worker internals | pending |
-| 9 | Errors and retries | pending |
-| 10 | Test plan | pending |
-| 11 | Local stack | pending |
+| 6 | [Contracts](#6-contracts) | draft |
+| 7 | [Gateway internals](#7-gateway-internals) | draft |
+| 8 | [Worker internals](#8-worker-internals) | draft |
+| 9 | [Errors, timeouts, and retries](#9-errors-timeouts-and-retries) | draft |
+| 10 | [Test plan](#10-test-plan) | draft |
+| 11 | [Local stack and simulation control](#11-local-stack-and-simulation-control) | draft |
 
 ---
 
@@ -595,3 +595,517 @@ This is compared with the Redis leaderboard. A participant with no stored answer
 | `business-english` | 10 | Workplace vocabulary |
 
 - A seed-validation test loads every set and checks: 2–4 options per question, `correct_option_id` belongs to the question, positions are contiguous.
+
+---
+
+## 6. Contracts
+
+The contracts are real files, written before the code (D13). This section explains them; the files are the source of truth.
+
+### 6.1 Files
+
+| File | Describes | Format |
+|---|---|---|
+| [`docs/api/openapi.yaml`](../api/openapi.yaml) | REST API: 7 operations, request/response schemas, error model | OpenAPI 3.1 |
+| [`docs/api/asyncapi.yaml`](../api/asyncapi.yaml) | WebSocket protocol: channel, auth, envelope, versioning, close codes, 4 client and 10 server messages with request/reply pairs | AsyncAPI 3.0 |
+| [`docs/api/schemas/common.json`](../api/schemas/common.json) | Shared WebSocket types: IDs, quiz code, public question, leaderboard, error codes | JSON Schema draft-07 |
+| `docs/api/schemas/ws/client/*.json`, `…/server/*.json` | One schema per WebSocket message, each with an example | JSON Schema draft-07 |
+| [`docs/api/redocly.yaml`](../api/redocly.yaml) | Lint rules for the OpenAPI file | Redocly |
+
+**Why two schema dialects:** AsyncAPI 3.0 accepts JSON Schema **draft-07** only (checked in the AsyncAPI 3.0.0 spec), so WebSocket payloads use draft-07. REST schemas live inside the OpenAPI 3.1 file. The only overlap is the quiz-code pattern, which appears in both; a contract test checks the two patterns are identical.
+
+### 6.2 REST API
+
+| Method and path | Who | Success | Main errors |
+|---|---|---|---|
+| `POST /api/v1/dev/tokens` | anyone (dev only) | 201 token | 404 when disabled |
+| `GET /api/v1/question-sets` | host | 200 list | 403 |
+| `POST /api/v1/quizzes` | host | 201 quiz in lobby | 404 `question_set_not_found`, 503 |
+| `GET /api/v1/quizzes/{code}` | any token | 200 quiz | 404 `unknown_quiz` |
+| `POST /api/v1/quizzes/{code}/start` | the quiz's host | 202 start accepted (idempotent) | 403 `not_host`, 409 `not_in_lobby` / `no_participants` |
+| `GET /api/v1/quizzes/{code}/leaderboard?offset&limit` | any token | 200 page (live from Redis, final from PostgreSQL) | 404 |
+| `GET /healthz`, `GET /readyz` | none | 200 / 503 | — |
+
+- Errors are RFC 9457 problem details with a machine-readable `code`.
+- Dependency outages return 503 with `Retry-After`.
+- REST timestamps are RFC 3339. WebSocket timestamps are epoch milliseconds, because clients compute countdowns from them.
+
+### 6.3 WebSocket protocol
+
+| Client → server | Reply |
+|---|---|
+| `join` {quizCode, displayName} | `snapshot` or `error` |
+| `watch` {quizCode} (host) | `snapshot` or `error` |
+| `submit_answer` {questionId, optionId} | `answer_result` (`accepted`/`duplicate`) or `error` |
+| `ping` {clientTime} | `pong` {clientTime, serverTime} |
+
+| Server → client (pushed) | When |
+|---|---|
+| `question` | a question opens, or its `closeAt` moves earlier (early close); idempotent by `questionId` |
+| `question_closed` | a question closes; carries the correct option |
+| `rank` | after each close, per participant |
+| `leaderboard` | batched leaderboard update |
+| `quiz_finished` | the quiz ends |
+| `quiz_state` | a lifecycle change without a question (e.g. `expired`) |
+| `snapshot` | reply to join/watch, and resync after a slow-client drop |
+| `error` | request failure or connection-level problem |
+
+**Client rules:**
+- Apply state only if its version is newer, **including snapshots**. The gateway subscribes a connection to its room *before* reading the snapshot, so an event can arrive before an older snapshot. Monotonic versions make that ordering harmless.
+- Ignore unknown fields and unknown message types (additive changes within v1).
+- Resend `submit_answer` with the same `id` after a reconnect if no reply arrived (FR-18, FR-30).
+
+### 6.4 Contract checks
+
+| Check | When | Tool |
+|---|---|---|
+| Every schema is valid draft-07; every schema example validates; negative cases are rejected (answer key in a question, look-alike in a quiz code, over-long name, missing request ID, points over 200, wrong protocol version) | CI, `make check` | JSON Schema validator. Already run on the current files: all pass |
+| `openapi.yaml` lints clean (2 expected warnings: health probes have no 4xx) | CI | `redocly lint` (already run) |
+| `asyncapi.yaml` validates (0 errors, 0 warnings) | CI | `asyncapi validate` (already run) |
+| Every REST response in handler tests validates against the spec | `go test` | `kin-openapi` response validation |
+| Every WebSocket message sent in gateway tests validates against its schema | `go test` | JSON Schema validator in the test kit |
+| Generated code is up to date | CI | `make generate` then `git diff --exit-code` |
+
+---
+
+## 7. Gateway internals
+
+### 7.1 Connection lifecycle
+
+```
+HTTP GET /ws?token=…
+  → origin allowed?            no  → 403
+  → token valid, not expired?  no  → 401
+  → join admission bucket ok?  no  → 503 + Retry-After   (before upgrading: cheaper than 1013)
+  → upgrade (gorilla Upgrader: 1 KB read/write buffers, shared write-buffer pool, compression off)
+  → start readLoop + writeLoop goroutines
+  → state: connected → (join | watch) → in room → closed
+```
+
+- **One quiz per connection.** A second `join`/`watch` gets `already_joined`. Switching quizzes means opening a new connection.
+- **Allowed messages by state:** before joining: `join`, `watch`, `ping`. After joining: `submit_answer` (participants only), `ping`. Anything else → `error` (`not_joined` / `forbidden` / `unknown_type`).
+
+### 7.2 Goroutines per connection
+
+| Goroutine | Does | Limits |
+|---|---|---|
+| `readLoop` | Reads frames, decodes the envelope, applies the rate limiter, dispatches | `SetReadLimit(4096)`; read deadline `WS_PONG_TIMEOUT`, extended by each pong |
+| `writeLoop` | The **only** writer to the socket (gorilla allows one concurrent writer). Drains the send queue, sends pings every `WS_PING_INTERVAL` | Write deadline 10 s per frame; any write error closes the connection |
+
+The send queue is a buffered channel of `WS_SEND_QUEUE_SIZE` items. An item is either a shared `*websocket.PreparedMessage` (room broadcasts) or a personal `[]byte` (replies, ranks).
+
+### 7.3 Handling client messages
+
+| Message | Steps |
+|---|---|
+| `join` | Validate code and name → ensure the question set is cached (single-flight, retry with backoff, §9) → **register in the registry and subscribe to the room first** → `join` script → `HGET` current answer → send `snapshot`. If this identity already has a local connection in the room, close the old one with 4000; also publish `kick` so other gateways do the same (FR-12) |
+| `watch` | Host role and `host_id` match → register as a watcher (no roster entry, no presence) → snapshot |
+| `submit_answer` | Must be a joined participant → cached question: does `optionId` belong to `questionId`? (`invalid_option`) → `correct` from the cached answer key → `answer` script (+ `WAIT` in the same pipeline when enabled) → `answer_result` or `error`. A question not in the cached set → `wrong_question` without calling Redis |
+| `ping` | Reply `pong` with `TIME`-aligned server time (the gateway tracks its offset from Redis `TIME`, refreshed every 30 s) |
+
+**Rate limiting:** a token bucket per connection (`WS_RATE_PER_SEC`, `WS_RATE_BURST`). Over the limit → `error rate_limited` with `retryAfterMs`. More than 100 violations in 10 s → close with 4002.
+
+### 7.4 Connection registry
+
+```go
+type registry struct {
+    shards [REGISTRY_SHARDS]struct {
+        mu    sync.RWMutex
+        rooms map[QuizCode]*room // room: conns map[*Conn]struct{}, participants map[ParticipantID]*Conn, lastStateVer, lastLbVer
+    }
+}
+```
+
+- Shard = `fnv32(code) % REGISTRY_SHARDS`. Join and leave take the shard's write lock only.
+- **Broadcast:** take the read lock, copy the room's connection list, release the lock, then for each connection do a **non-blocking** send to its queue. A full queue triggers the slow-client policy. No lock is held while touching sockets or queues.
+- The first connection in a room triggers `SUBSCRIBE room:{C}`. The last one leaving triggers `UNSUBSCRIBE`, reference-counted per room.
+
+### 7.5 Room events → client messages
+
+One subscriber goroutine per gateway reads the Redis pub/sub connection in order. Redis runs scripts one at a time and delivers publishes in order, so events arrive in version order. The gateway still drops any event whose version isn't newer than the room's last seen version.
+
+| Internal event | Client message(s) |
+|---|---|
+| `state`, status `question_open` | `question`: question text and options from the cache, times from the event. Built once, broadcast as a prepared message |
+| `state`, status `question_closed` | `question_closed` with the correct option from the cache (broadcast). Then personal ranks: one pipeline of `ZSCORE` + `ZCOUNT (score +inf` per local participant, and a `rank` message to each |
+| `state`, status `finished` / `expired` | `quiz_finished` from the `finished` event / `quiz_state` |
+| `lb` | `leaderboard` (broadcast) |
+| `kick` | Close local connections of that participant, except the one named in the event, with 4000 |
+
+### 7.6 Slow clients (NFR-17)
+
+A non-blocking send that finds the queue full:
+1. Empties the connection's queue and marks it `needsResync`.
+2. The writer then sends a fresh `snapshot` (read from Redis) instead of the dropped messages.
+3. If the same connection overflows again within 30 s, it is closed with 4003.
+
+### 7.7 Presence
+
+Every `PRESENCE_REFRESH`, for each room with local participants, one small script call sets `ZADD online <Redis TIME> id…` for all of them. Using Redis time avoids clock skew between gateways and Redis in the early-close check. Presence is never removed on disconnect (§4.6).
+
+### 7.8 Question cache
+
+| Aspect | Rule |
+|---|---|
+| Key | question-set ID |
+| Load | single-flight; retry with capped exponential backoff and jitter within `DB_RETRY_BUDGET`; failure → join gets `server_busy` (retryable) |
+| Validation on load | 2–4 options per question, correct option belongs to the question; otherwise the set is refused and logged |
+| Lifetime | reference-counted by local rooms using it; entries with no references are evicted LRU once over `QUESTION_CACHE_MAX_SETS` |
+| Concurrency | entries are immutable; the map is behind an `RWMutex` |
+
+### 7.9 Shutdown (NFR-16)
+
+On `SIGTERM`:
+1. `/readyz` returns 503, so the load balancer stops sending new connections.
+2. New upgrades get 503.
+3. Existing connections are closed with 1012 in jittered batches spread over `SHUTDOWN_TIMEOUT` (default 30 s), so clients don't all reconnect at once.
+4. Unsubscribe, close Redis and PostgreSQL pools, exit.
+
+---
+
+## 8. Worker internals
+
+### 8.1 Loops
+
+Each worker runs three independent loops, each on its own `time.Ticker`. A pass that overruns its interval simply skips ticks rather than piling up.
+
+| Loop | Every | Claim | Work per item | Parallelism |
+|---|---|---|---|---|
+| Transitions | `SCHED_TRANSITION_POLL` (100 ms) | `ZRANGEBYSCORE sched:transitions -inf now LIMIT 0 N` | `HGET state_ver` → `transition` script | bounded pool, 16 |
+| Leaderboard | `SCHED_LEADERBOARD_TICK` (200 ms) | `SPOP sched:lbdirty N` | `leaderboard` script | bounded pool, 16 |
+| Flush | `SCHED_FLUSH_POLL` (1 s) | `claim` script | answer flush or finalise (§4.5) | bounded pool, 4 |
+
+Several workers run the same loops. Transitions are guarded by the version check, leaderboard codes by `SPOP`, and flush jobs by the claim's visibility timeout, so extra workers never duplicate work. They only compete for it.
+
+### 8.2 Idempotency
+
+Every step is safe to repeat, which is what makes crash recovery a no-op:
+
+| Step | Why it is safe to repeat |
+|---|---|
+| Transition | Version check: a repeat gets `stale` |
+| Leaderboard | Publishing a newer snapshot is always correct; the version only goes up |
+| Answer flush insert | `ON CONFLICT DO NOTHING` on the primary key |
+| `flush_ack` | `DEL` is idempotent; the counter only decrements if the job still existed |
+| Finalise | Results insert, reconciliation, and status update in one transaction, so it either happened or didn't. `release` is idempotent |
+
+### 8.3 Health
+
+- **Readiness:** Redis and PostgreSQL reachable, and not shutting down.
+- **Liveness:** each loop records its last completed pass. If any loop hasn't completed a pass in 5× its interval, `/healthz` fails and the process is restarted. This is what the "no healthy workers" alert (non-functional §4.4) counts.
+
+### 8.4 Shutdown
+
+On `SIGTERM`: stop claiming new work, let in-flight items finish (up to `SHUTDOWN_TIMEOUT`), then exit. A job still claimed at exit becomes due again after its visibility timeout, so nothing is lost.
+
+---
+
+## 9. Errors, timeouts, and retries
+
+### 9.1 Three kinds of failure
+
+| Kind | Examples | Handling |
+|---|---|---|
+| **Business outcome** | question closed, duplicate answer, not the host, unknown quiz | A normal return value from a script or service, mapped to a protocol `error` code or HTTP 4xx. Never retried by the server. Not logged as an error |
+| **Transient infrastructure** | Redis or PostgreSQL timeout, connection refused, failover in progress | Returned as retryable (`server_busy` over WebSocket, 503 + `Retry-After` over REST). Retried only where the operation is idempotent (§9.3) |
+| **Bug** | panic, impossible state, script returning an unknown status | Recovered per connection or request, logged with stack and IDs, counted, returned as `internal`. The process keeps serving everyone else |
+
+### 9.2 Timeouts
+
+Every call carries a `context` deadline. Nothing waits forever.
+
+| Call | Timeout | Reason |
+|---|---|---|
+| Answer script (+ `WAIT`) | 250 ms | Inside the NFR-7 budget (p99 < 250 ms) |
+| Join script, snapshot reads | 500 ms | |
+| Transition, leaderboard, claim scripts | 500 ms | The next poll retries anyway |
+| Question-set load (PostgreSQL) | 2 s per attempt, 10 s budget | §9.3 |
+| Answer batch insert | 10 s | Up to 10,000 rows |
+| Finalise transaction | 15 s | Results + reconciliation |
+| Socket write | 10 s per frame | A stuck socket is closed, not waited on |
+
+### 9.3 Retry policy
+
+**Rule: retry only what is safe to repeat, and let the component that owns idempotency do the retrying.**
+
+| Operation | Retried by | How | Why that's safe |
+|---|---|---|---|
+| Answer script timed out or failed | **Nobody on the server.** The client resends with the same request ID | Client backoff (§9.5) | If the first attempt did apply, the resend gets `duplicate` with the original result (FR-18). A server-side retry would hide the ambiguity |
+| Question-set load | Gateway / API, inside single-flight | Full-jitter backoff: base 100 ms, cap 5 s, budget 10 s | Read-only |
+| Quiz creation | Client (host) after 503 | — | Transaction rolls back on failure; no half-created quiz |
+| Transition, leaderboard tick | Next scheduler poll | Automatic (100 / 200 ms) | Version check / monotonic version |
+| Answer flush, finalise | Visibility timeout | Job due again after 30 s; repeated failures raise `flush_failures_total` | Primary key + `ON CONFLICT DO NOTHING`; one transaction |
+| Pub/sub subscription dropped | Gateway | Reconnect with full-jitter backoff (100 ms → 5 s), resubscribe every local room, **then send a fresh `snapshot` to each local connection** | Snapshots are complete and versioned, so nothing missed while disconnected matters |
+| Presence refresh failed | Next refresh | — | Last-seen only moves forward |
+
+**Backoff formula (full jitter):** `sleep = random(0, min(cap, base × 2^attempt))`. Spreading retries randomly avoids synchronised waves of retries after an outage.
+
+### 9.4 Degraded modes
+
+| Condition | Detection | Behaviour |
+|---|---|---|
+| Redis unhealthy | 3 failed pings in a row (1 s apart) | `/readyz` fails; the gateway refuses new upgrades and joins; answers get `server_busy` |
+| PostgreSQL unhealthy | failed ping | API: 503 for create/results. Gateway: joins on uncached question sets fail after the retry budget. Worker: flushes wait. **Live quizzes keep running** |
+| Worker loop stalled | no completed pass in 5× its interval | `/healthz` fails and the orchestrator restarts it |
+
+### 9.5 Client reconnect policy (React app and test kit)
+
+| Close / error | Client action |
+|---|---|
+| Network drop, 1001, 1006, 1012 (service restart) | Reconnect with full-jitter backoff (base 500 ms, cap 15 s), re-`join`, resend any unanswered `submit_answer` with its original `id` |
+| 1013 or `server_busy` | Same, but wait at least `retryAfterMs` |
+| 4000 (replaced by a newer connection) | **Don't reconnect.** Another tab or device owns the session |
+| 4003 (slow consumer) | Reconnect after a delay; the new snapshot resyncs |
+| 1008 / HTTP 401 (auth, origin) | Don't reconnect; get a new token first |
+
+### 9.6 Error mapping
+
+| Cause | WebSocket `error.code` | HTTP |
+|---|---|---|
+| Schema or size violation | `invalid_message` (size: close 1009) | 400 `invalid_request` |
+| Unknown message type | `unknown_type` | — |
+| `v` ≠ 1 | `unsupported_version` | — |
+| Rate limit | `rate_limited` (+ `retryAfterMs`) | — |
+| Script `unknown_quiz` / `quiz_expired` | `unknown_quiz` / `quiz_expired` | 404 `unknown_quiz` |
+| Script `not_host` / `not_in_lobby` / `no_participants` | — | 403 `not_host` / 409 |
+| Script `wrong_question` / `question_closed` / `not_joined` | same code | — |
+| Option not in question (cache check) | `invalid_option` | — |
+| Redis/PostgreSQL timeout or unavailable | `server_busy`, `retryable: true` | 503 `unavailable` + `Retry-After` |
+| Panic, unknown script status | `internal` | 500 `internal` |
+
+Every error increments `errors_total{service, code}` and is logged once, at the point it is mapped, with quiz, participant, connection, and request IDs.
+
+---
+
+## 10. Test plan
+
+### 10.1 How TDD works here (D14)
+
+For every unit in TDD scope:
+1. **Write the failing tests** from the requirement IDs they cover (table in §10.4), including edge cases and shared test vectors (§3.5).
+2. **I review the tests** before any implementation is written or generated. They are the acceptance criteria for AI-generated code.
+3. **Implement** until they pass under `-race`.
+4. **Record** the AI collaboration entry (D7).
+
+### 10.2 Levels, locations, commands
+
+| Level | Where | Build tag | Command | Runs against |
+|---|---|---|---|---|
+| Domain unit | `internal/*/domain_test.go` | — | `make test-unit` | pure Go |
+| Service unit | `internal/*/service_test.go` | — | `make test-unit` | gomock mocks |
+| Contract | `internal/httpapi`, `internal/protocol`, `testkit` | — | `make test-contract` | OpenAPI + JSON Schemas |
+| Integration | `internal/*/*_redis_test.go`, `*_pg_test.go` | `integration` | `make test-integration` | testcontainers: Redis, PostgreSQL, Toxiproxy |
+| End-to-end | `server/e2e/` | `e2e` | `make test-e2e` | the Docker Compose stack (§11) |
+| Load / simulation | `cmd/sim`, `loadtest/k6` | — | `make sim …`, `make k6 …` | the Docker Compose stack |
+
+`make test` runs unit + contract + integration. `make check` adds lint (`golangci-lint`), `go vet`, and "generated code is up to date".
+
+### 10.3 The test kit
+
+One package drives the system in tests **and** in the simulator, so load scenarios are scenarios the tests have already verified (D14).
+
+```go
+env := testkit.Compose("http://localhost:8080")      // or testkit.InProcess(t) for integration tests
+host := env.Host(t)                                   // host token + REST client
+quiz := host.CreateQuiz(ctx, "demo-quick", testkit.Window(5*time.Second))
+
+room := testkit.Room(quiz).
+    Participants(50).
+    Answers(testkit.Within(2*time.Second), testkit.CorrectRatio(0.7))
+
+res := room.Run(ctx, env, func(r *testkit.Run) {
+    r.At(1*time.Second, host.Start(quiz))
+    r.AtQuestion(1, testkit.KillGateway(0))           // fault steps (ignored when unsupported by env)
+})
+
+res.AssertScoresMatchExpected(t)                     // recompute from submitted answers + server times
+res.AssertLeaderboardVersionsMonotonic(t)
+res.AssertLatencies(t, testkit.NFR6(500*time.Millisecond), testkit.NFR7(100*time.Millisecond))
+```
+
+- `testkit.Client`: speaks the documented protocol, validates every received message against its JSON Schema, applies the monotonic-version rules, and records timings.
+- **Expected scores are computed independently** from what the clients sent and the `receivedAt` the server returned, using the Go scoring function. A run proves the whole pipeline scored correctly, not just that it returned numbers.
+
+### 10.4 Requirement → test mapping (must-haves)
+
+| FR | Test(s) |
+|---|---|
+| FR-1 | `TestCreateQuiz_ReturnsUniqueCode`, `TestCreateQuiz_RetriesOnCodeCollision` (gomock: repository returns a unique violation twice) |
+| FR-2, FR-4, FR-7 | `TestNext_TransitionTable` (vectors), `TestTransitionScript_Vectors` (same vectors, real Redis), `E2E_QuizRunsToFinish` |
+| FR-3 | `TestStartScript_OnlyHost`, `…_OnlyInLobby`, `…_NeedsParticipant`, `…_Idempotent` |
+| FR-5 | `TestAnswerScript_EarlyCloseWhenAllOnlineAnswered`, `…_IgnoresOfflineParticipants`, `TestEarlyClose_DoesNotChangePoints` |
+| FR-8, FR-9 | `TestJoinScript_ConcurrentJoins_NoLossNoDuplicates` (1,000 goroutines) |
+| FR-10 | `TestJoin_LateJoinerStartsAtZeroAndCanAnswerOpenQuestion` |
+| FR-11 | `TestSnapshot_HasNoAnswerKey` (+ schema), `TestJoin_SnapshotContents` |
+| FR-12 | `TestJoin_RejoinKeepsScore`, `E2E_SecondConnectionKicksFirst_AcrossGateways` |
+| FR-13, FR-27a | `TestLeaderboardAPI_FinishedQuizFromPostgres`, `TestJoin_FinishedQuizReturnsFinal` |
+| FR-15 | `TestValidateDisplayName` (table) |
+| FR-16, FR-17 | `TestAnswerScript_AcceptanceOrder` (vectors), `TestAnswerScript_LateByOneMillisecondRejected`, `TestSubmitAnswer_OnlyCurrentQuestion` |
+| FR-18, FR-30 | `TestAnswerScript_DuplicateReturnsOriginal`, `TestAnswerScript_ConcurrentSubmitsSameUser_ScoreOnce` (100 goroutines), `E2E_ResendAfterReconnect_NoDoubleScore` |
+| FR-19 | `TestPoints_Vectors` (Go), `TestAnswerScript_PointsVectors` (Lua, same file) |
+| FR-20 | `TestSubmitAnswer_ReplyContents` |
+| FR-21 | `TestPublicQuestion_HasNoCorrectOption`, contract negative case, `TestGateway_NoAnswerKeyBeforeClose` (inspects every frame sent while open) |
+| FR-22 | `E2E_TwoGateways_SameTotals` |
+| FR-23, FR-24 | `TestRanks_SharedRanks` (1, 2, 2, 4), `TestLeaderboardScript_OrderAndNames` |
+| FR-25, FR-26 | `TestLeaderboardTick_CoalescesBurst` (1,000 answers → ≤ 5 updates/s), `TestBroadcast_SameBytesForAllRecipients` |
+| FR-27 | `TestLeaderboardAPI_LivePagination` |
+| FR-28 | `TestClient_IgnoresOlderVersions` (test kit + React reducer test), `TestGateway_DropsStaleEvents` |
+| FR-29 | `E2E_ReconnectResumesAtCurrentQuestion_MissedScoresZero` |
+| FR-31 | `E2E_HostDisconnectAfterStart_QuizContinues` |
+| FR-32, FR-33 | `TestFlushJob_WritesAllAnswers`, `TestFlushJob_NotDuringOpenQuestion` |
+| FR-34 | `TestFlushJob_DeletesOnlyAfterCommit` (gomock: commit fails → no delete), `Integration_KillWorkerBetweenCommitAndDelete` |
+| FR-35 (S) | `TestFinalise_ReconciliationMismatchCounted`, and `score_reconciliation_mismatches_total == 0` after every simulation |
+
+### 10.5 Concurrency tests (integration, real Redis)
+
+| Race | Test |
+|---|---|
+| Same participant submits twice at once | 100 goroutines, one answer → exactly one `accepted`, total counted once |
+| Answer vs close | Answers fired across `closeAt` while a transition runs → each answer is either accepted with correct points or rejected; never both, never lost |
+| Two workers, one due transition | Both run the script → exactly one `applied`, one `stale` |
+| Two workers, one flush job | Both claim → only one gets it; `pending_flush` ends at 0 |
+| Join burst | 1,000 concurrent joins → roster = leaderboard = 1,000 |
+
+### 10.6 Failure injection
+
+**With gomock (service unit):**
+- Redis timeout on answer → `server_busy`, no retry.
+- Script returns an unknown status → `internal` and logged.
+- PostgreSQL fails 3 times then succeeds on a question-set load → one load, backoff timings respected, singleflight shared.
+- Commit fails during flush → no `flush_ack`.
+- Publish-side errors don't exist, since events are published inside scripts; tests assert that services never call publish directly.
+
+**With Toxiproxy and containers (integration / e2e):**
+
+| Scenario | Injection | Expected |
+|---|---|---|
+| Redis latency | +100 ms on the Redis proxy | Answers still accepted; NFR-7 degrades but no errors; nothing scored twice |
+| Redis connection reset mid-answer | reset after request sent | Client gets `server_busy`, resends → `duplicate` or `accepted`, never counted twice |
+| Redis down 5 s | disable proxy | Gateways not ready; answers `server_busy`; after recovery, resubscribe + snapshots; quiz resumes on stored deadlines |
+| PostgreSQL down during a question close | pause container | Quiz continues; flush job retries; data kept in Redis; flushed after recovery |
+| Gateway killed mid-question | `docker kill ws-1` | Its clients reconnect to ws-2 with a snapshot; no answer lost or double-counted |
+| Worker killed mid-flush | `docker kill worker-1` | Job due again after 30 s; flushed exactly once |
+| All workers stopped for 10 s | `docker stop` both | No late answers accepted (deadline enforced by the script); quiz resumes on restart |
+
+### 10.7 Load and simulation scenarios
+
+Scenario files in `loadtest/scenarios/` are run by `cmd/sim` (§11.4). **Pass criteria are the NFRs.** A run fails if a target is missed, and results are written to `loadtest/results/` and summarised in `docs/testing.md` with the machine spec.
+
+| Scenario | Shape | Pass criteria |
+|---|---|---|
+| `big-room` | 1 room, 5,000 participants (then 10,000), all answer within 2 s, 5 questions | NFR-6/7/8 p95 met, 0 errors, reconciliation 0 |
+| `many-rooms` | 200 rooms × 50 participants, staggered starts | same, plus transition lag p95 < 250 ms |
+| `gateway-crash` | `big-room` with `ws-1` killed during question 2 | all clients back within 15 s, reconciliation 0 |
+| `slow-clients` | `big-room` with 5% of clients reading slowly | others unaffected (NFR-6 met for fast clients); slow clients resynced or closed with 4003 |
+| `redis-latency` | `big-room` with +20 ms Redis latency | NFR-7 still met |
+
+---
+
+## 11. Local stack and simulation control
+
+Goal: **one command to start everything, one to scale it, one to run a simulation, and simple switches for failures while a simulation runs.**
+
+### 11.1 Quick start
+
+```bash
+cp .env.example .env          # optional; make up does this if .env is missing
+make up                       # build, migrate, seed, start everything, wait until healthy
+open http://localhost:8080    # client (participant + host views)
+make sim SCENARIO=big-room    # run a simulation against the running stack
+make down                     # stop (keep data)  |  make reset: stop and delete volumes
+```
+
+Prerequisites: Docker with Compose v2, and `make`. Go 1.23+ only for running tests or the simulator outside Docker (`make sim` falls back to a container when Go isn't installed).
+
+### 11.2 Services
+
+| Service | Replicas (default) | Port on host | Notes |
+|---|---|---|---|
+| `nginx` | 1 | **8080** | Serves the built client at `/`, routes `/api` → api, `/ws` → ws. Re-resolves service names every 5 s (Docker DNS resolver + variable upstream) so scaled instances join the rotation; to be confirmed when the config is written. Query strings not logged (D15) |
+| `api` | 1 | — | |
+| `ws` | 2 | — | `nofile` ulimit 65,536 |
+| `worker` | 2 | — | |
+| `migrate` | one-shot | — | goose up + seed; the Go services start only after it completes successfully |
+| `redis` | 1 | 6379 (localhost only) | AOF on |
+| `postgres` | 1 | 5432 (localhost only) | named volume |
+| **Optional profiles** | | | |
+| `observability` | Prometheus, Grafana | 9090, 3000 | Grafana comes provisioned with the three dashboards from non-functional §4.5 |
+| `replica` | `redis-replica` | — | Also sets `REDIS_WAIT_REPLICAS=1`, to exercise `WAIT` |
+| `chaos` | `toxiproxy` | 8474 (API) | Services reach Redis and PostgreSQL through Toxiproxy, so latency and outages can be injected |
+
+`make up PROFILES="observability chaos"` enables profiles. Everything else works without them.
+
+### 11.3 Make targets
+
+| Target | Does |
+|---|---|
+| `make up` / `down` / `reset` | Start (build, migrate, seed, wait healthy) / stop / stop and wipe volumes |
+| `make ps` / `logs S=ws` | Status / follow logs for one service |
+| `make scale WS=4 WORKER=3` | Change replica counts without restarting the rest |
+| `make redis-cli` / `psql` | Shells into the data stores for inspection |
+| `make generate` | Run all code generators (§1.5) |
+| `make test` / `test-e2e` / `check` | §10.2 |
+| `make sim SCENARIO=… [overrides]` | Run a simulation scenario (§11.4) |
+| `make k6 SCENARIO=…` | Run a k6 scenario from `loadtest/k6/` |
+| `make chaos-…` | Failure switches (§11.5) |
+| `make demo` | `up`, then create a `demo-quick` quiz and print the host and participant URLs, for the video |
+
+### 11.4 Simulation control
+
+`cmd/sim` runs a scenario file through the test kit against the running stack. Everything in the file can be overridden from the command line, so a run can be adjusted without editing files.
+
+```yaml
+# loadtest/scenarios/big-room.yaml
+name: big-room
+questionSet: synonyms-everyday
+questions: 5                 # use the first N questions of the set
+window: 10s
+reveal: 3s
+rooms: 1
+participantsPerRoom: 5000
+joinRampUp: 20s              # spread joins; 0 = all at once (join storm)
+answers:
+  within: 2s                 # all answers land within 2 s of the question opening
+  correctRatio: 0.7
+  noAnswerRatio: 0.02        # some participants don't answer (tests the deadline path)
+slowClients: 0               # ratio of clients that read slowly
+chaos:                       # optional timed faults
+  - at: question:2+1s
+    action: kill ws-1
+assert: [nfr6, nfr7, nfr8, reconciliation]
+```
+
+```bash
+make sim SCENARIO=big-room PARTICIPANTS=10000 WINDOW=15s
+make sim SCENARIO=many-rooms ROOMS=500
+make sim SCENARIO=big-room CHAOS=off
+```
+
+**Output:**
+- A live summary in the terminal: connected, answered, current p50/p95/p99 for NFR-6/7/8, errors by code.
+- A JSON report in `loadtest/results/<scenario>-<timestamp>.json` with the config, machine info, and final percentiles.
+- Exit code ≠ 0 if any `assert` fails, so a scenario can gate CI.
+
+**Docker access:** chaos steps that kill or pause containers call Docker. When the simulator runs on the host it uses the local Docker CLI. The containerised fallback mounts the Docker socket only for scenarios that contain such steps.
+
+**Client-side limits:** the simulator raises its own open-file limit. One machine can open about 28,000 connections to a single address:port before running out of local ports. That covers the 10,000-person target. Beyond it, the simulator can spread connections across several source IPs.
+
+### 11.5 Failure switches
+
+Usable on their own, or as `chaos` steps in a scenario.
+
+| Target | Effect |
+|---|---|
+| `make chaos-kill S=ws-1` | Kill one container (gateway or worker) |
+| `make chaos-stop S=worker` | Stop all instances of a service; `chaos-start` brings them back |
+| `make chaos-redis-latency MS=50` | Add latency between services and Redis (requires the `chaos` profile) |
+| `make chaos-redis-down SEC=5` | Cut Redis off for N seconds, then restore |
+| `make chaos-pg-down SEC=30` | Pause PostgreSQL for N seconds |
+| `make chaos-slow-client` | Start clients that read slowly, alongside a running simulation |
+| `make chaos-reset` | Remove all injected faults |
+
+### 11.6 Configuration for demos and simulations
+
+- **Per quiz:** question window and reveal durations can be set when the quiz is created (5–120 s and 2–30 s), so demos can use 10 s questions without changing server config.
+- **Per stack:** everything in §2 can be overridden in `.env`, e.g. `SCHED_LEADERBOARD_TICK=100ms` to compare batching windows.
+- **`.env.example`** documents every variable with its default. `make up` refuses to start if a required value is missing, and prints which one.

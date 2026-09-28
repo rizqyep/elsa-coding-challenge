@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "watch",
+  "description": "Host watches their quiz without playing. Host token only. Reply: snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data",
+    "id"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "watch"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quizCode"
+      ],
+      "properties": {
+        "quizCode": {
+          "$ref": "../../common.json#/definitions/QuizCode"
+        }
+      }
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "watch",
+      "id": "h-1",
+      "data": {
+        "quizCode": "K7Q2MX"
+      }
+    }
+  ]
+}

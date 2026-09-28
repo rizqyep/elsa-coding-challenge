@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "rank",
+  "description": "The participant's own rank, sent once after each question closes (FR-26).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "rank"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "score",
+        "rank",
+        "participantCount"
+      ],
+      "properties": {
+        "questionId": {
+          "$ref": "../../common.json#/definitions/QuestionId"
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "participantCount": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "rank",
+      "data": {
+        "questionId": "syn-03",
+        "score": 574,
+        "rank": 1,
+        "participantCount": 3
+      }
+    }
+  ]
+}

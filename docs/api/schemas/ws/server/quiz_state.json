@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "quiz_state",
+  "description": "A lifecycle change with no question attached, e.g. the lobby expired.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "quiz_state"
+    },
+    "data": {
+      "$ref": "../../common.json#/definitions/QuizState"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "quiz_state",
+      "data": {
+        "status": "expired",
+        "questionIndex": -1,
+        "questionCount": 10,
+        "stateVersion": 2
+      }
+    }
+  ]
+}

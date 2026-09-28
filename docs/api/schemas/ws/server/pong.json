@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pong",
+  "description": "Reply to ping; serverTime lets the client estimate its clock offset for countdowns.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "pong"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientTime",
+        "serverTime"
+      ],
+      "properties": {
+        "clientTime": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        },
+        "serverTime": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "pong",
+      "data": {
+        "clientTime": 1790000003100,
+        "serverTime": 1790000003180
+      }
+    }
+  ]
+}

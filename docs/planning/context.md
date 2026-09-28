@@ -46,7 +46,7 @@ A decision is `decided` only when its rationale is written down, either here or 
 | D10 | Where quiz state lives | **Live state in Redis, static content persistent, WS servers stateless** ([notes](#d10-quiz-state-and-room-virtualisation)) | decided |
 | D11 | Deployable services | **One codebase, three services: REST API, WebSocket gateway, worker** ([notes](#d11-three-services-from-one-codebase)) | decided |
 | D12 | Persistent storage locally | **Real PostgreSQL in Docker Compose** with migrations and seeded question sets. The three services must share persistent data, which an in-memory mock can't do. It also makes the cache warm-up and delay-free answer validation demonstrable, and multiple question sets easy to manage | decided |
-| D13 | API contracts | **Spec-first contracts:** OpenAPI 3.1 for the REST API, AsyncAPI 3.0 for the WebSocket protocol, JSON Schema for every payload. Contract tests on both sides ([notes](#d13-contracts)) | decided |
+| D13 | API contracts | **Spec-first contracts:** OpenAPI 3.1 for the REST API, AsyncAPI 3.0 for the WebSocket protocol, JSON Schema **draft-07** for every WebSocket payload (the draft AsyncAPI 3.0 supports). Contract tests on both sides ([notes](#d13-contracts)) | decided |
 | D14 | Test strategy | **TDD by default for critical services and core business logic.** Four levels: pure domain unit tests; service unit tests with **gomock** (incl. injected failures); integration tests on real Redis/PostgreSQL (testcontainers, with fault injection); end-to-end and load ([notes](#d14-test-strategy)) | decided |
 | D15 | WebSocket authentication | **Signed token in the query string** (`/ws?token=…`) over TLS. Tokens are short-lived; query strings are excluded from load balancer and gateway logs | decided |
 | D16 | Quiz code | **System-generated, 6 characters, random alphanumeric** from an alphabet without look-alikes. Collisions retried at creation; unique for good, since finished quizzes stay viewable (FR-13) | decided |
@@ -179,7 +179,8 @@ Every boundary between the client and the backend has a machine-readable contrac
 |---|---|---|
 | REST API | `docs/api/openapi.yaml` (OpenAPI 3.1) | Go server interfaces and types generated with `oapi-codegen`; TypeScript types generated with `openapi-typescript`; request/response validation in tests |
 | WebSocket protocol | `docs/api/asyncapi.yaml` (AsyncAPI 3.0), referencing the JSON Schemas | The documented channel, every message in each direction, examples |
-| Every payload (REST and WebSocket) | `docs/api/schemas/*.json` (JSON Schema) | Single source for field names, types, required fields, limits; TypeScript types generated from them; Go structs checked against them in tests |
+| WebSocket payloads | `docs/api/schemas/` (JSON Schema draft-07; AsyncAPI 3.0 supports only draft-07) | Single source for field names, types, required fields, limits; TypeScript types generated from them; Go structs checked against them in tests |
+| REST payloads | Inline in `openapi.yaml` (OpenAPI 3.1's JSON Schema dialect) | As above, via the OpenAPI generators |
 
 - **Drift is caught by tests, not reviews.** Go handler responses are validated against the OpenAPI spec in tests. Every WebSocket message the gateway sends in tests is validated against its JSON Schema. Every documented example must validate too.
 - **This settles type sync between Go and TypeScript:** generated from the contracts on both sides instead of hand-written twice.

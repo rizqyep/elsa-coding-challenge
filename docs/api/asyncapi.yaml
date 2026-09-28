@@ -1,0 +1,284 @@
+asyncapi: 3.0.0
+info:
+  title: Real-Time Vocabulary Quiz, WebSocket protocol
+  version: 1.0.0
+  description: |-
+    Real-time protocol between the quiz clients and the WebSocket gateway. This document describes the **gateway**, so `receive` operations are client→server messages and `send` operations are server→client messages.
+
+    **Envelope:** every message is JSON `{"v": 1, "type": "…", "id": "…", "data": {…}}`. `id` is set by the client on requests and echoed on the reply. Payload schemas (JSON Schema draft-07) are in `schemas/ws/`.
+
+    **Versions:** `v` is the protocol version. Within v1 only additive changes are allowed: clients must ignore unknown fields and unknown message types. `stateVersion` and `leaderboard.version` are monotonic, so clients apply a message only if it is newer than what they already have (FR-28), including snapshots.
+
+    **Timestamps** are epoch milliseconds from the server clock (Redis `TIME`). Clients estimate their offset with `ping`/`pong` for countdowns but never decide lateness themselves.
+
+    **Close codes:** 1000 normal · 1001 going away · 1008 policy violation (bad origin) · 1009 message too big (> 4 KB) · 1012 service restart (gateway draining; reconnect with backoff) · 1013 try again later (admission limit) · 4000 replaced by a newer connection for the same identity (FR-12) · 4002 repeated rate-limit violations · 4003 slow consumer, resync failed.
+
+    **Auth:** the token goes in the `token` query parameter (D15). An invalid token is rejected with HTTP 401 before the upgrade.
+defaultContentType: application/json
+servers:
+  local:
+    host: localhost:8080
+    protocol: ws
+    pathname: /ws
+    description: Local stack; nginx routes /ws to the gateways.
+    security:
+    - $ref: '#/components/securitySchemes/queryToken'
+channels:
+  quiz:
+    address: /ws
+    title: Quiz connection
+    description: One connection per participant or host, joined to exactly one quiz.
+    messages:
+      join:
+        $ref: '#/components/messages/join'
+      watch:
+        $ref: '#/components/messages/watch'
+      submit_answer:
+        $ref: '#/components/messages/submit_answer'
+      ping:
+        $ref: '#/components/messages/ping'
+      snapshot:
+        $ref: '#/components/messages/snapshot'
+      question:
+        $ref: '#/components/messages/question'
+      question_closed:
+        $ref: '#/components/messages/question_closed'
+      answer_result:
+        $ref: '#/components/messages/answer_result'
+      rank:
+        $ref: '#/components/messages/rank'
+      leaderboard:
+        $ref: '#/components/messages/leaderboard'
+      quiz_finished:
+        $ref: '#/components/messages/quiz_finished'
+      quiz_state:
+        $ref: '#/components/messages/quiz_state'
+      error:
+        $ref: '#/components/messages/error'
+      pong:
+        $ref: '#/components/messages/pong'
+    bindings:
+      ws:
+        bindingVersion: 0.1.0
+        query:
+          type: object
+          required:
+          - token
+          properties:
+            token:
+              type: string
+              description: Signed token (D15).
+operations:
+  receive_join:
+    action: receive
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Join a quiz as a participant
+    messages:
+    - $ref: '#/channels/quiz/messages/join'
+    reply:
+      channel:
+        $ref: '#/channels/quiz'
+      messages:
+      - $ref: '#/channels/quiz/messages/snapshot'
+      - $ref: '#/channels/quiz/messages/error'
+  receive_watch:
+    action: receive
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Watch a quiz as its host
+    messages:
+    - $ref: '#/channels/quiz/messages/watch'
+    reply:
+      channel:
+        $ref: '#/channels/quiz'
+      messages:
+      - $ref: '#/channels/quiz/messages/snapshot'
+      - $ref: '#/channels/quiz/messages/error'
+  receive_submit_answer:
+    action: receive
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Answer the open question
+    messages:
+    - $ref: '#/channels/quiz/messages/submit_answer'
+    reply:
+      channel:
+        $ref: '#/channels/quiz'
+      messages:
+      - $ref: '#/channels/quiz/messages/answer_result'
+      - $ref: '#/channels/quiz/messages/error'
+  receive_ping:
+    action: receive
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Clock-offset ping
+    messages:
+    - $ref: '#/channels/quiz/messages/ping'
+    reply:
+      channel:
+        $ref: '#/channels/quiz'
+      messages:
+      - $ref: '#/channels/quiz/messages/pong'
+  send_question:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: A question opened, or its close time moved earlier
+    messages:
+    - $ref: '#/channels/quiz/messages/question'
+  send_question_closed:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: The question closed; correct option revealed
+    messages:
+    - $ref: '#/channels/quiz/messages/question_closed'
+  send_leaderboard:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Live leaderboard update (same bytes for everyone in the room)
+    messages:
+    - $ref: '#/channels/quiz/messages/leaderboard'
+  send_rank:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Your own rank after a question closes
+    messages:
+    - $ref: '#/channels/quiz/messages/rank'
+  send_quiz_finished:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: The quiz finished
+    messages:
+    - $ref: '#/channels/quiz/messages/quiz_finished'
+  send_quiz_state:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Lifecycle change without a question (e.g. expired)
+    messages:
+    - $ref: '#/channels/quiz/messages/quiz_state'
+  send_snapshot:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Resync after a slow-client drop (also the reply to join/watch)
+    messages:
+    - $ref: '#/channels/quiz/messages/snapshot'
+  send_error:
+    action: send
+    channel:
+      $ref: '#/channels/quiz'
+    summary: Connection-level error
+    messages:
+    - $ref: '#/channels/quiz/messages/error'
+components:
+  securitySchemes:
+    queryToken:
+      type: httpApiKey
+      name: token
+      in: query
+      description: Short-lived signed token from the identity provider (mocked by POST /api/v1/dev/tokens).
+  messages:
+    join:
+      name: join
+      title: join
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/client/join.json
+    watch:
+      name: watch
+      title: watch
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/client/watch.json
+    submit_answer:
+      name: submit_answer
+      title: submit_answer
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/client/submit_answer.json
+    ping:
+      name: ping
+      title: ping
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/client/ping.json
+    snapshot:
+      name: snapshot
+      title: snapshot
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/snapshot.json
+    question:
+      name: question
+      title: question
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/question.json
+    question_closed:
+      name: question_closed
+      title: question_closed
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/question_closed.json
+    answer_result:
+      name: answer_result
+      title: answer_result
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/answer_result.json
+    rank:
+      name: rank
+      title: rank
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/rank.json
+    leaderboard:
+      name: leaderboard
+      title: leaderboard
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/leaderboard.json
+    quiz_finished:
+      name: quiz_finished
+      title: quiz_finished
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/quiz_finished.json
+    quiz_state:
+      name: quiz_state
+      title: quiz_state
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/quiz_state.json
+    error:
+      name: error
+      title: error
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/error.json
+    pong:
+      name: pong
+      title: pong
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/server/pong.json

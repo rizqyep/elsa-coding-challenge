@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "question_closed",
+  "description": "The question closed; reveals the correct option (FR-21).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "question_closed"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "correctOptionId",
+        "nextTransitionAt",
+        "stateVersion"
+      ],
+      "properties": {
+        "questionId": {
+          "$ref": "../../common.json#/definitions/QuestionId"
+        },
+        "correctOptionId": {
+          "$ref": "../../common.json#/definitions/OptionId"
+        },
+        "nextTransitionAt": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        },
+        "stateVersion": {
+          "$ref": "../../common.json#/definitions/Version"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "question_closed",
+      "data": {
+        "questionId": "syn-03",
+        "correctOptionId": "syn-03-b",
+        "nextTransitionAt": 1790000020000,
+        "stateVersion": 7
+      }
+    }
+  ]
+}

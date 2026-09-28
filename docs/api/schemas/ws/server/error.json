@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "error",
+  "description": "A request failed, or a connection-level problem. Carries the request id when it answers a request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "error"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "../../common.json#/definitions/ErrorCode"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "retryAfterMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "error",
+      "id": "r-8",
+      "data": {
+        "code": "question_closed",
+        "message": "The question is closed.",
+        "retryable": false
+      }
+    }
+  ]
+}

@@ -211,3 +211,41 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - **A duplicate flush acknowledgement could decrement the pending counter twice.** The decrement only happens if the job was actually removed.
   - **The finalise job must wait for every per-question flush.** A `pending_flush` counter in the room makes it re-queue itself until the answers are all saved.
 - **Verification:** all diagrams re-rendered with `mermaid-cli` after the change. The scripts and SQL are specifications at this point. They are TDD scope (D14), so their tests come first in implementation, driven by the shared test vectors (§3.5).
+
+### AI-013: Contracts and gateway/worker internals (TRD §6–8)
+
+- **Date / phase:** 2026-09-28 · TRD
+- **Task type:** contract authoring, technical specification
+- **What the AI produced:**
+  - The real contract files: [`openapi.yaml`](../api/openapi.yaml) (7 REST operations, RFC 9457 errors), [`asyncapi.yaml`](../api/asyncapi.yaml) (WebSocket protocol, envelope, versioning, close codes), and 15 JSON Schema files, each message with an example.
+  - TRD §6 (contracts), §7 (gateway internals: connection lifecycle, goroutines, registry, events to messages, slow clients, presence, question cache, shutdown), and §8 (worker loops, idempotency, health, shutdown).
+- **Catches from checking tools against their docs, not memory:**
+  - **D13 said JSON Schema 2020-12, but AsyncAPI 3.0 only accepts draft-07** (checked in the AsyncAPI 3.0.0 spec). WebSocket schemas were written in draft-07 and D13 was corrected.
+  - The AI checked the current oapi-codegen README before relying on OpenAPI 3.1. Support exists but is described as initial, so the spec avoids multi-type unions.
+  - **A snapshot/event ordering race:** the gateway subscribes a connection *before* reading its snapshot (otherwise events in between would be lost), so an event can arrive before an older snapshot. Resolved by making clients apply snapshots monotonically by version too, and written into the protocol's client rules.
+  - A generator script stamped the AsyncAPI file with a header claiming it was "generated from the TRD", which wasn't true since the file is maintained by hand. The AI noticed and removed it.
+- **Verification (actually run):**
+  - All 15 schemas are valid draft-07, and all 14 message examples validate.
+  - Six **negative cases are rejected by the contract itself**: a question carrying `correctOptionId` (FR-21), a quiz code with a look-alike `0` (D16), a 21-character name (FR-15), an answer without a request ID (FR-18), 201 points (FR-19), protocol version 2.
+  - `redocly lint openapi.yaml`: valid, 2 expected warnings (health probes have no 4xx).
+  - `asyncapi validate asyncapi.yaml`: valid, 0 errors, 0 warnings.
+  - Example arithmetic cross-checked: an answer 2.1 s into a 15 s window scores 100 + ⌊100 × 12,900 / 15,000⌋ = 186, as the example shows.
+- **Note:** the AsyncAPI CLI sends anonymous usage analytics by default. It ran once with that default; it can be disabled with `asyncapi config analytics --disable`.
+
+### AI-014: Errors and retries, test plan, local stack (TRD §9–11)
+
+- **Date / phase:** 2026-09-29 · TRD
+- **Task type:** technical specification, test design, developer experience
+- **What I asked:** continue the TRD. The local stack must be **easy to start and set up, and easy to control for simulation**.
+- **What the AI produced:**
+  - **§9, errors:** three kinds of failure, a timeout for every call, a retry policy, degraded modes, the client reconnect policy, and a table mapping every cause to its WebSocket and HTTP error.
+  - **§10, tests:** the TDD workflow with my test review before implementation, the test levels with commands, the test kit API, a requirement-to-test table, concurrency tests, gomock and Toxiproxy fault scenarios, and load scenarios whose pass criteria are the NFRs.
+  - **§11, local stack**, shaped by my requirement: `make up` / `make scale` / `make sim`, optional Compose profiles (observability, Redis replica, Toxiproxy chaos), simulation scenarios as YAML with command-line overrides and timed chaos steps, `make chaos-*` switches, and `make demo` for the video.
+- **Design points worth noting:**
+  - **The server never retries an answer script.** If it timed out, nobody knows whether it applied. The client resends with the same request ID, and deduplication returns the original result. A server-side retry would hide that ambiguity.
+  - **Simulations check correctness, not just speed.** The test kit recomputes every expected score from what clients sent and the server's receive times, and compares it with the server's totals.
+- **Catches:**
+  - The AI's first draft of the requirement-to-test table mapped FR-16 (submit an answer) to the quiz-creation tests. Found on re-read and fixed.
+  - A script then checked that **all 33 must-have FRs** appear in the table. None are missing.
+  - The nginx behaviour for picking up scaled instances (re-resolving service names) is marked "to be confirmed when the config is written" rather than asserted.
+- **Verification:** links checked; the FR coverage check above; the port-exhaustion figure (≈ 28,000 connections per source address) matches the default Linux ephemeral port range (32768–60999).

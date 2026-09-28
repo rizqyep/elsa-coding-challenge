@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "snapshot",
+  "description": "Full view of the room. Sent in reply to join/watch, and to resync a client (reconnect, slow client). Apply field by field, only where versions are newer (FR-28).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "snapshot"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quizCode",
+        "role",
+        "quiz",
+        "question",
+        "you",
+        "yourAnswer",
+        "correctOptionId",
+        "leaderboard",
+        "serverTime"
+      ],
+      "properties": {
+        "quizCode": {
+          "$ref": "../../common.json#/definitions/QuizCode"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "participant",
+            "host"
+          ]
+        },
+        "quiz": {
+          "$ref": "../../common.json#/definitions/QuizState"
+        },
+        "question": {
+          "oneOf": [
+            {
+              "$ref": "../../common.json#/definitions/PublicQuestion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "you": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "participantId",
+                "displayName",
+                "score",
+                "rank"
+              ],
+              "properties": {
+                "participantId": {
+                  "$ref": "../../common.json#/definitions/ParticipantId"
+                },
+                "displayName": {
+                  "$ref": "../../common.json#/definitions/DisplayName"
+                },
+                "score": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rank": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "yourAnswer": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "questionId",
+                "optionId",
+                "correct",
+                "points"
+              ],
+              "properties": {
+                "questionId": {
+                  "$ref": "../../common.json#/definitions/QuestionId"
+                },
+                "optionId": {
+                  "$ref": "../../common.json#/definitions/OptionId"
+                },
+                "correct": {
+                  "type": "boolean"
+                },
+                "points": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 200
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correctOptionId": {
+          "oneOf": [
+            {
+              "$ref": "../../common.json#/definitions/OptionId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "leaderboard": {
+          "$ref": "../../common.json#/definitions/Leaderboard"
+        },
+        "serverTime": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        }
+      },
+      "description": "question is null in lobby and after the quiz. correctOptionId is set only while the current question is closed (reveal). you and yourAnswer are null for the host."
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "snapshot",
+      "id": "r-1",
+      "data": {
+        "quizCode": "K7Q2MX",
+        "role": "participant",
+        "quiz": {
+          "status": "question_open",
+          "questionIndex": 2,
+          "questionCount": 10,
+          "stateVersion": 6
+        },
+        "question": {
+          "questionId": "syn-03",
+          "index": 2,
+          "count": 10,
+          "prompt": "Choose the synonym of 'rapid'",
+          "options": [
+            {
+              "id": "syn-03-a",
+              "text": "slow"
+            },
+            {
+              "id": "syn-03-b",
+              "text": "quick"
+            },
+            {
+              "id": "syn-03-c",
+              "text": "quiet"
+            },
+            {
+              "id": "syn-03-d",
+              "text": "heavy"
+            }
+          ],
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000
+        },
+        "you": {
+          "participantId": "u_8f3a2c",
+          "displayName": "Rina",
+          "score": 574,
+          "rank": 1
+        },
+        "yourAnswer": null,
+        "correctOptionId": null,
+        "leaderboard": {
+          "version": 42,
+          "participantCount": 3,
+          "top": [
+            {
+              "rank": 1,
+              "participantId": "u_8f3a2c",
+              "displayName": "Rina",
+              "score": 574
+            },
+            {
+              "rank": 2,
+              "participantId": "u_19bd07",
+              "displayName": "Tomás",
+              "score": 551
+            },
+            {
+              "rank": 2,
+              "participantId": "u_c4e611",
+              "displayName": "Aiko",
+              "score": 551
+            }
+          ]
+        },
+        "serverTime": 1790000003200
+      }
+    }
+  ]
+}

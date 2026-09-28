@@ -1,0 +1,8 @@
+# Lint configuration for openapi.yaml (run: npx @redocly/cli lint openapi.yaml)
+extends:
+  - recommended
+rules:
+  info-license: off            # private assignment, no published license
+  no-server-example.com: off   # the only server is the local Docker stack
+  # operation-4xx-response stays on; /healthz and /readyz are the two
+  # expected warnings, since health probes have no client-error cases.

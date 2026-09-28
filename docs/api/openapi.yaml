@@ -1,0 +1,390 @@
+openapi: 3.1.0
+info:
+  title: Real-Time Vocabulary Quiz, REST API
+  version: 1.0.0
+  description: |
+    Request/response operations of the quiz backend: dev tokens, question sets,
+    creating and starting quizzes, and reading leaderboards.
+
+    Real-time traffic (joining, answering, live updates) uses the WebSocket
+    protocol described in `asyncapi.yaml`.
+
+    Conventions:
+    - Timestamps are RFC 3339 strings in UTC. (The WebSocket protocol uses
+      epoch milliseconds, because clients do countdown arithmetic on them.)
+    - Errors use `application/problem+json` (RFC 9457) with a machine-readable `code`.
+    - Retryable failures (Redis or PostgreSQL unavailable) return 503 with `Retry-After`.
+servers:
+  - url: http://localhost:8080
+    description: Local stack (nginx routes /api to the REST API)
+tags:
+  - name: dev
+    description: Mocked identity provider. Disabled in production.
+  - name: quizzes
+    description: Create and start quizzes, read status and leaderboards.
+  - name: ops
+    description: Health endpoints used by the load balancer and orchestrator.
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/dev/tokens:
+    post:
+      tags: [dev]
+      operationId: createDevToken
+      summary: Issue a signed token (mocked identity provider)
+      description: Only available when `DEV_TOKENS_ENABLED=true`. Returns 404 otherwise.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DevTokenRequest' }
+            examples:
+              participant: { value: { role: participant } }
+              host: { value: { role: host, participantId: host_demo } }
+      responses:
+        '201':
+          description: Token issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DevToken' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/question-sets:
+    get:
+      tags: [quizzes]
+      operationId: listQuestionSets
+      summary: List question sets a host can use
+      responses:
+        '200':
+          description: Available question sets
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/QuestionSetSummary' }
+              example:
+                items:
+                  - { id: demo-quick, title: Quick demo, questionCount: 3 }
+                  - { id: synonyms-everyday, title: Everyday synonyms, questionCount: 10 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/quizzes:
+    post:
+      tags: [quizzes]
+      operationId: createQuiz
+      summary: Create a quiz room in the lobby (host only)
+      description: Generates a unique 6-character code (D16). The caller becomes the host.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateQuizRequest' }
+            example: { questionSetId: demo-quick, questionWindowSeconds: 10, revealSeconds: 3 }
+      responses:
+        '201':
+          description: Quiz created
+          headers:
+            Location:
+              schema: { type: string }
+              example: /api/v1/quizzes/K7Q2MX
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quiz' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/quizzes/{code}:
+    parameters:
+      - $ref: '#/components/parameters/QuizCode'
+    get:
+      tags: [quizzes]
+      operationId: getQuiz
+      summary: Quiz status and settings
+      description: Served from Redis while live, from PostgreSQL once finished or expired.
+      responses:
+        '200':
+          description: The quiz
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quiz' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/quizzes/{code}/start:
+    parameters:
+      - $ref: '#/components/parameters/QuizCode'
+    post:
+      tags: [quizzes]
+      operationId: startQuiz
+      summary: Start the quiz (host only)
+      description: |
+        Accepted, not immediate: the first question is opened by a worker within
+        one poll interval (≈100 ms) and announced over WebSocket (FR-3, FR-4).
+        Repeating the call after a successful start returns 202 again (idempotent).
+      responses:
+        '202':
+          description: Start accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StartAccepted' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /api/v1/quizzes/{code}/leaderboard:
+    parameters:
+      - $ref: '#/components/parameters/QuizCode'
+    get:
+      tags: [quizzes]
+      operationId: getLeaderboard
+      summary: Full leaderboard, paginated (FR-27, FR-13)
+      description: Live standings from Redis while the quiz runs; final results from PostgreSQL once finished.
+      parameters:
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+      responses:
+        '200':
+          description: A page of the leaderboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaderboardPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /healthz:
+    get:
+      tags: [ops]
+      operationId: healthz
+      summary: Liveness
+      security: []
+      responses:
+        '200': { description: Process is alive }
+  /readyz:
+    get:
+      tags: [ops]
+      operationId: readyz
+      summary: Readiness (Redis and PostgreSQL reachable, not draining)
+      security: []
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token from the identity provider (mocked by `POST /api/v1/dev/tokens`).
+
+  parameters:
+    QuizCode:
+      name: code
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/QuizCode' }
+
+  schemas:
+    QuizCode:
+      type: string
+      pattern: '^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$'
+      description: 6 characters without look-alikes (D16). Must match `schemas/common.json`.
+      examples: [K7Q2MX]
+    Role:
+      type: string
+      enum: [participant, host]
+    DevTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/Role' }
+        participantId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Optional; generated when omitted.
+    DevToken:
+      type: object
+      additionalProperties: false
+      required: [token, participantId, role, expiresAt]
+      properties:
+        token: { type: string }
+        participantId: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        expiresAt: { type: string, format: date-time }
+      example:
+        token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1XzhmM2EyYyIsInJvbGUiOiJwYXJ0aWNpcGFudCJ9.sig
+        participantId: u_8f3a2c
+        role: participant
+        expiresAt: '2026-09-28T10:15:00Z'
+    QuestionSetSummary:
+      type: object
+      additionalProperties: false
+      required: [id, title, questionCount]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        questionCount: { type: integer, minimum: 1 }
+    CreateQuizRequest:
+      type: object
+      additionalProperties: false
+      required: [questionSetId]
+      properties:
+        questionSetId: { type: string, minLength: 1, maxLength: 64 }
+        questionWindowSeconds: { type: integer, minimum: 5, maximum: 120, default: 15 }
+        revealSeconds: { type: integer, minimum: 2, maximum: 30, default: 5 }
+    QuizStatus:
+      type: string
+      enum: [lobby, question_open, question_closed, finished, expired]
+    Quiz:
+      type: object
+      additionalProperties: false
+      required: [code, questionSetId, status, questionCount, participantCount, questionWindowSeconds, revealSeconds, createdAt]
+      properties:
+        code: { $ref: '#/components/schemas/QuizCode' }
+        questionSetId: { type: string }
+        status: { $ref: '#/components/schemas/QuizStatus' }
+        questionCount: { type: integer, minimum: 1 }
+        participantCount: { type: integer, minimum: 0 }
+        questionWindowSeconds: { type: integer }
+        revealSeconds: { type: integer }
+        createdAt: { type: string, format: date-time }
+        lobbyExpiresAt: { type: string, format: date-time, description: Present while in the lobby. }
+        finishedAt: { type: string, format: date-time, description: Present once finished. }
+      example:
+        code: K7Q2MX
+        questionSetId: demo-quick
+        status: lobby
+        questionCount: 3
+        participantCount: 0
+        questionWindowSeconds: 10
+        revealSeconds: 3
+        createdAt: '2026-09-28T10:00:00Z'
+        lobbyExpiresAt: '2026-09-28T10:30:00Z'
+    StartAccepted:
+      type: object
+      additionalProperties: false
+      required: [code, startRequested]
+      properties:
+        code: { $ref: '#/components/schemas/QuizCode' }
+        startRequested: { type: boolean, const: true }
+      example: { code: K7Q2MX, startRequested: true }
+    LeaderboardEntry:
+      type: object
+      additionalProperties: false
+      required: [rank, participantId, displayName, score]
+      properties:
+        rank: { type: integer, minimum: 1, description: Equal scores share a rank (FR-24). }
+        participantId: { type: string }
+        displayName: { type: string, minLength: 1, maxLength: 20 }
+        score: { type: integer, minimum: 0 }
+    LeaderboardPage:
+      type: object
+      additionalProperties: false
+      required: [code, status, participantCount, offset, limit, entries]
+      properties:
+        code: { $ref: '#/components/schemas/QuizCode' }
+        status: { $ref: '#/components/schemas/QuizStatus' }
+        participantCount: { type: integer, minimum: 0 }
+        offset: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1 }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/LeaderboardEntry' }
+      example:
+        code: K7Q2MX
+        status: finished
+        participantCount: 3
+        offset: 0
+        limit: 100
+        entries:
+          - { rank: 1, participantId: u_8f3a2c, displayName: Rina, score: 574 }
+          - { rank: 2, participantId: u_19bd07, displayName: Tomás, score: 551 }
+          - { rank: 2, participantId: u_c4e611, displayName: Aiko, score: 551 }
+    ErrorCode:
+      type: string
+      enum:
+        - invalid_request
+        - unauthorized
+        - forbidden
+        - not_host
+        - not_found
+        - unknown_quiz
+        - question_set_not_found
+        - not_in_lobby
+        - no_participants
+        - unavailable
+        - internal
+    Problem:
+      type: object
+      description: RFC 9457 problem details, plus a machine-readable `code`.
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri-reference, default: about:blank }
+        title: { type: string }
+        status: { type: integer }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        detail: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid request body or parameters
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Bad Request, status: 400, code: invalid_request, detail: 'questionWindowSeconds must be between 5 and 120' }
+    Unauthorized:
+      description: Missing, invalid, or expired token
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Unauthorized, status: 401, code: unauthorized }
+    Forbidden:
+      description: Token lacks the required role, or caller is not this quiz's host
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Forbidden, status: 403, code: not_host }
+    NotFound:
+      description: Unknown quiz or question set (or dev tokens disabled)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Not Found, status: 404, code: unknown_quiz }
+    Conflict:
+      description: The quiz is not in a state that allows this (not in lobby, no participants yet)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Conflict, status: 409, code: no_participants }
+    Unavailable:
+      description: A dependency is unavailable; safe to retry after `Retry-After`
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Seconds
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Service Unavailable, status: 503, code: unavailable }

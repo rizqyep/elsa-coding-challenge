@@ -14,7 +14,7 @@ Each choice is justified against our requirements ([`../planning/requirements.md
 | Load balancer | **nginx** locally; managed L7 balancer in production | WebSocket upgrade, path routing to API and gateway, no sticky sessions needed |
 | Frontend | **React + TypeScript + Vite**, native `WebSocket` | Thin demo; typed protocol messages; no socket library needed |
 | Observability | **Prometheus, Grafana, OpenTelemetry, `log/slog`** | Standard, vendor-neutral, first-class Go support (NFR-27 to NFR-30) |
-| Contracts | **OpenAPI 3.1, AsyncAPI 3.0, JSON Schema**; `oapi-codegen`, `openapi-typescript` | Spec-first contracts for every REST and WebSocket payload; generated types on both sides (D13) |
+| Contracts | **OpenAPI 3.1, AsyncAPI 3.0, JSON Schema draft-07**; `oapi-codegen`, `openapi-typescript`, `json-schema-to-typescript` | Spec-first contracts for every REST and WebSocket payload; generated types on both sides (D13) |
 | Testing | **`go test -race`, gomock, testcontainers-go, Toxiproxy, k6**, plus a Go room simulator | Failure injection with mocks and real network faults; real Redis and PostgreSQL; measured load (D14) |
 | Packaging | **Docker, Docker Compose** | One command starts everything (NFR-35) |
 
