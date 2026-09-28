@@ -162,3 +162,37 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Follow-up decisions:**
   - **Replica durability:** ship the simple `WAIT 1 50` version for now. Later, work out something more concrete: an async retry with backoff, or research into other Redis behaviour that guarantees replica writes better. The AI added starting points: `min-replicas-to-write`, `WAITAOF`, and durable Redis-compatible services, each with what needs checking.
   - **PostgreSQL down at join:** I asked for a careful retry with backoff on question-set loads. It is now capped exponential backoff with jitter, shared across concurrent joins through single-flight, and ends in a retryable error to the client.
+
+### AI-010: Contracts and test strategy
+
+- **Date / phase:** 2026-09-28 · pre-TRD
+- **Task type:** engineering process, test design
+- **What I asked:**
+  1. An OpenAPI spec for the REST API and documented contracts for every payload, so integration is seamless.
+  2. Unit and integration tests with gomock, to test edge cases in connection handling, reliability, and availability.
+  3. TDD by default for critical services and core business logic, so tests can later be extended into the load test and Go simulator.
+- **What the AI added:**
+  - **Contracts (D13):** OpenAPI 3.1 alone doesn't describe WebSocket messages, so it proposed **AsyncAPI 3.0** for the WebSocket protocol and **JSON Schema** for every payload, spec-first. Go server types are generated with `oapi-codegen` and TypeScript types with `openapi-typescript`, with contract tests validating real responses and messages. This also settled an open TRD question: Go and TypeScript types are generated from the contracts, not hand-written twice.
+  - **gomock (D14):** it recommended `go.uber.org/mock`, the maintained fork of `golang/mock`. It pointed out the limit of mocks: a mocked `RecordAnswer` can't find a race inside the Lua script. So mocks cover *our handling* of failures, and every repository also gets integration tests on real Redis and PostgreSQL. It added **Toxiproxy** to those tests so connection resets, latency, and outages are real network faults, not simulated ones.
+  - **Simplification:** with gomock covering unit tests, the hand-written in-memory repositories from D9 are no longer needed. They were dropped, leaving one real implementation per interface.
+  - **TDD scope:** a table of what is test-first (scoring, state machine, answer recording, transitions and claims, leaderboard, flush pipeline, connection registry and fan-out) and what isn't (wiring, routing, config).
+  - **Test kit:** a shared protocol client plus scenario builders, used by integration and end-to-end tests and reused by the Go simulator at 10,000 participants. Load scenarios are then the same scenarios the tests already verify.
+- **Why this matters for verification:** for TDD-scope code, I review the failing tests (written from requirement IDs) before any implementation is generated. The tests become the acceptance criteria for AI-generated code.
+- **Catch (the AI's own error):** while reordering the decisions table, a `sed` command deleted the D12 row instead of moving it. The follow-up `grep` check showed D12 missing, and the row was restored from the exact text recorded earlier. It's a small example of why every edit gets checked.
+- **Verification:** the decisions are recorded in `context.md` (D13, D14) and reflected in `tech-choices.md`, `non-functional.md`, and `architecture.md`. The contracts and tests themselves are the next deliverables.
+
+### AI-011: TRD sections 1–3 (layout, configuration, domain model)
+
+- **Date / phase:** 2026-09-28 · TRD
+- **Task type:** technical specification
+- **My decisions going in:**
+  - **WebSocket auth:** token in the query string (D15).
+  - **Quiz code:** system-generated, 6-character random alphanumeric with collision retry (D16).
+- **What the AI produced:** [`trd.md`](../planning/trd.md) §1–3: repository and Go package layout with dependency rules, every configuration variable with its default, and the domain model (identifiers, question sets, room state machine, scoring, validation, events).
+- **Issues the AI found while writing, for my review:**
+  - **Quiz codes must be unique permanently, not just while live.** Finished quizzes stay viewable by code (FR-13), so a Redis `NX` check alone would allow a code to be reused after its live data is released. The code is reserved with a unique constraint in PostgreSQL instead.
+  - **Early close must not change points.** If early close moved the single deadline, the speed bonus and audit data could silently use the shortened value. It split `Deadline` (used for scoring) from `CloseAt` (used for acceptance). The data-flow doc and Redis data model were updated to match.
+  - **Scoring and transitions exist in both Go and Lua**, so they could drift apart. Shared test-vector files run against both the Go functions (unit tests) and the Lua scripts (integration tests), with integer-millisecond arithmetic so rounding can't differ.
+  - **Leaking the answer key is prevented by a separate type**, not by remembering to omit a field: only `PublicQuestion` (no correct option) can reach the protocol layer.
+  - **The lobby has two due events** (start, expiry). A `StartRequested` flag tells the worker which one applies.
+- **Verification:** the two changed data-flow diagrams re-rendered with `mermaid-cli`. The quiz-code space (31⁶ ≈ 887 million) and collision rate (≈ 0.1% at a million stored quizzes) were computed. Section status is "draft for review" until I sign off.

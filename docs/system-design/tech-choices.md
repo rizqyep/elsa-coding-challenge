@@ -14,7 +14,8 @@ Each choice is justified against our requirements ([`../planning/requirements.md
 | Load balancer | **nginx** locally; managed L7 balancer in production | WebSocket upgrade, path routing to API and gateway, no sticky sessions needed |
 | Frontend | **React + TypeScript + Vite**, native `WebSocket` | Thin demo; typed protocol messages; no socket library needed |
 | Observability | **Prometheus, Grafana, OpenTelemetry, `log/slog`** | Standard, vendor-neutral, first-class Go support (NFR-27 to NFR-30) |
-| Testing | **`go test -race`, testcontainers-go, k6**, plus a Go room simulator | Real Redis and PostgreSQL in tests; measured load against NFR targets |
+| Contracts | **OpenAPI 3.1, AsyncAPI 3.0, JSON Schema**; `oapi-codegen`, `openapi-typescript` | Spec-first contracts for every REST and WebSocket payload; generated types on both sides (D13) |
+| Testing | **`go test -race`, gomock, testcontainers-go, Toxiproxy, k6**, plus a Go room simulator | Failure injection with mocks and real network faults; real Redis and PostgreSQL; measured load (D14) |
 | Packaging | **Docker, Docker Compose** | One command starts everything (NFR-35) |
 
 ## Backend: Go
@@ -131,8 +132,10 @@ All vendor-neutral: the same signals work with any hosted backend.
 
 | Level | Tools |
 |---|---|
-| Unit | `go test -race`; pure domain logic (scoring, state machine) tested without I/O; in-memory repositories |
-| Integration | `testcontainers-go` starts real Redis and PostgreSQL, so Lua scripts and SQL are tested exactly as they run |
+| Domain unit | `go test -race`; pure domain logic (scoring, state machine) tested without I/O |
+| Service unit | **gomock** (`go.uber.org/mock`, the maintained fork of `golang/mock`): `mockgen` generates mocks from each module's interfaces. Used to inject dependency failures (timeouts, errors, outages) and assert retries, backoff, and error mapping |
+| Integration | `testcontainers-go` starts real Redis and PostgreSQL, so Lua scripts and SQL are tested exactly as they run. **Toxiproxy** sits between the code and Redis/PostgreSQL to inject latency, dropped connections, and outages |
+| Contract | Handler responses validated against the OpenAPI spec (`kin-openapi`); WebSocket messages validated against their JSON Schemas |
 | Concurrency | Parallel duplicate submits, answers racing the deadline, two workers claiming the same transition |
 | Load | **k6** (WebSocket API) for many clients across many rooms, plus a **Go room simulator** for one very large room. A Go client can open thousands of sockets from one machine at lower cost per virtual user, and measure answer → leaderboard latency end to end |
 

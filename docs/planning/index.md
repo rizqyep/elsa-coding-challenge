@@ -10,10 +10,10 @@ Read them in this order. Each one builds on the one before it.
 
 | Doc | Purpose | Status |
 |---|---|---|
-| [`context.md`](context.md) | Problem, scope, and the decisions everything else builds on (D1–D12) | current |
+| [`context.md`](context.md) | Problem, scope, and the decisions everything else builds on (D1–D16) | current |
 | [`requirements.md`](requirements.md) | Functional and non-functional requirements, assumptions, resolved questions | agreed |
 | [`../system-design/`](../system-design/) | Part 1 deliverable: architecture, components, data flow, technology choices, non-functional design | complete, pending final review |
-| [`trd.md`](trd.md) | Technical requirements for the Go server: modules, Redis key schema, transition scripts, protocol details, error handling, test plan | not started |
+| [`trd.md`](trd.md) | Technical requirements for the Go backend: layout, config, domain, Redis scripts, schema, contracts, internals, test plan | in progress (§1–3 draft) |
 | [`tasks.md`](tasks.md) | Task breakdown derived from the TRD, with phases and status | draft (pre-TRD) |
 
 **How the docs relate:** the system design describes the **whole** feature for reviewers, including the mocked parts, at the level the brief asks for. The TRD covers only the component we build, down to the implementation detail. It links to the system design instead of repeating it.
@@ -31,12 +31,12 @@ Every requirement in the brief, mapped to the place that covers it. Before submi
 | B5 | Architecture diagram and component descriptions (Part 1) | [`architecture.md`](../system-design/architecture.md) |
 | B6 | Data flow, join → leaderboard (Part 1) | [`data-flow.md`](../system-design/data-flow.md) |
 | B7 | Technologies with justification (Part 1) | [`tech-choices.md`](../system-design/tech-choices.md), decisions in `context.md` |
-| B8 | AI Collaboration in Design (Submission 1) | [`docs/ai-collaboration/`](../ai-collaboration/index.md) (AI-001 to AI-009 so far) |
+| B8 | AI Collaboration in Design (Submission 1) | [`docs/ai-collaboration/`](../ai-collaboration/index.md) (AI-001 to AI-011 so far) |
 | B9 | AI-assisted code marked, with verification (Part 2.3) | `docs/ai-collaboration/` + code pointers (D7) |
 | B10 | Scalability and trade-offs (Part 2.4) | NFR-1 to NFR-5e, NFR-24 to NFR-26, D10, D11; [`non-functional.md`](../system-design/non-functional.md) §1, §7 |
 | B11 | Performance under load (Part 2.4) | NFR-6 to NFR-11; `non-functional.md` §2; load test results |
 | B12 | Reliability (Part 2.4) | NFR-12 to NFR-18; `non-functional.md` §3 |
-| B13 | Maintainability (Part 2.4) | NFR-31 to NFR-35, D9 |
+| B13 | Maintainability (Part 2.4) | NFR-31 to NFR-35, D9, D13 (contracts), D14 (TDD and test levels) |
 | B14 | Monitoring and observability (Part 2.4) | NFR-27 to NFR-30; `non-functional.md` §4 |
 | B15 | Run and test instructions (Submission 2) | root `README.md` |
 | B16 | Video, 5–10 min (Submission 3) | outside this repo |

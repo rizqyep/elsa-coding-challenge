@@ -122,7 +122,7 @@ The three services **never call each other**. Each one talks only to Redis and P
 
 | | |
 |---|---|
-| Role | Issues signed tokens carrying user ID, display name, and role (`participant` or `host`) |
+| Role | Issues short-lived signed tokens carrying the user ID and role (`participant` or `host`). The display name is chosen at join (FR-8). The WebSocket sends the token in the query string (D15) |
 | Built as | A dev-only token endpoint on the REST API that signs with a shared secret. In production, ELSA's existing identity service, with tokens verified against its public keys |
 | Why it matters | Clients can't choose their own user ID or claim the host role (NFR-19) |
 
@@ -176,7 +176,7 @@ The three services **never call each other**. Each one talks only to Redis and P
 | | |
 |---|---|
 | Role | Question sets with answer keys (read-only here), answer history (FR-32), final results (FR-27a) |
-| Built as | **Real PostgreSQL in Docker Compose (D12)**, with SQL migrations and several seeded question sets. Accessed through repository interfaces; unit tests use in-memory implementations of the same interfaces |
+| Built as | **Real PostgreSQL in Docker Compose (D12)**, with SQL migrations and several seeded question sets. Accessed through repository interfaces; unit tests use gomock mocks of those interfaces, integration tests use a real PostgreSQL container (D14) |
 | Scaling | Off the hot path: one batch per question per room, after the answer burst |
 | Failure | Flushes are retried. Redis keeps unflushed data, with its TTL extended, until the write is confirmed (NFR-13a, NFR-18) |
 
@@ -212,7 +212,7 @@ Every key of a room contains the `{quizId}` hash tag, so all of a room's keys la
 
 | Key | Type | Contents | Lifetime |
 |---|---|---|---|
-| `quiz:{id}:room` | hash | status, question index, deadline, window and reveal durations, state version, leaderboard version, host ID, question set ID | quiz |
+| `quiz:{id}:room` | hash | status, question index, opened-at, original deadline, effective close time, next transition time, window and reveal durations, start requested, lobby expiry, state version, leaderboard version, host ID, question set ID | quiz |
 | `quiz:{id}:roster` | hash | participant ID → display name | quiz |
 | `quiz:{id}:online` | sorted set | participant ID → last-seen time, refreshed by the gateway holding the connection | quiz |
 | `quiz:{id}:lb` | sorted set | participant ID → total score | quiz |

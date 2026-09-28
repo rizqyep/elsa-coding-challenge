@@ -31,7 +31,10 @@ I drive and the AI navigates.
 - **Challenging recommendations for scale and correctness** before accepting them. See AI-005 and AI-006.
 - **Measurable targets.** Performance and scale claims are written as numbers (NFR-1 to NFR-11) so the load test can confirm or refute them later.
 
-**Implementation phase** (to come): tests written or approved by me before accepting AI-generated logic, concurrency tests for scoring, load-test measurements, and a code review pass.
+**Implementation phase** (to come):
+- **TDD for critical services and core logic (D14).** The failing tests are written from the requirement IDs and reviewed by me before any implementation is generated. AI-generated code is accepted only when those tests pass under `-race`.
+- gomock tests for failure paths, integration tests on real Redis and PostgreSQL with fault injection, contract tests against the OpenAPI/AsyncAPI specs (D13).
+- Load-test and simulator measurements that reuse the same test scenarios, and a code review pass.
 
 ## Conventions
 

@@ -195,10 +195,10 @@ Quiz IDs are **never** metric labels (unbounded cardinality). Per-quiz detail go
 
 ## 6. Maintainability
 
-- **Module layout (D9):** each module has a pure `domain` core, a `service`, and a `repository` interface with Redis/PostgreSQL and in-memory implementations. Three thin `cmd/` entry points (D11).
+- **Module layout (D9):** each module has a pure `domain` core, a `service`, and a `repository` interface with a Redis or PostgreSQL implementation, mocked with gomock in unit tests. Three thin `cmd/` entry points (D11).
 - **Rules live in one place:** scoring rules and the state machine are pure Go and unit-tested directly. Redis scripts are small, one per operation, and tested against real Redis.
-- **Tests (NFR-32):** every must-have FR maps to at least one automated test; concurrency tests for the races; integration tests with real Redis and PostgreSQL.
-- **Protocol (NFR-33):** versioned, documented with an example for every message.
+- **Tests (NFR-32, D14):** four levels: domain unit tests, service unit tests with gomock failure injection, integration tests on real Redis and PostgreSQL with Toxiproxy fault injection, and end-to-end/load tests. Every must-have FR maps to at least one test.
+- **Contracts (NFR-33, D13):** OpenAPI for REST, AsyncAPI + JSON Schema for WebSocket messages, written before the code; types generated from them; contract tests catch drift.
 - **Config (NFR-34):** environment variables, validated at startup. Tick and poll intervals, TTLs, and limits are all configurable.
 
 ## 7. Trade-offs

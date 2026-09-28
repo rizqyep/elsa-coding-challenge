@@ -110,7 +110,7 @@ sequenceDiagram
     S2->>S2: validate schema and size, apply rate limit
     S2->>S2: correct or not, from cached answer key
     S2->>R: answer script
-    Note over R: all in one atomic step<br/>1. status is question_open and question ID matches<br/>2. TIME is before the deadline<br/>3. no existing answer for this participant (HSETNX)<br/>4. points = correct ? 100 + floor(100 x remaining / window) : 0<br/>5. add points to leaderboard, mark leaderboard dirty<br/>6. if answered count reaches online count, move deadline to now
+    Note over R: all in one atomic step<br/>1. status is question_open and question ID matches<br/>2. TIME is before the close time<br/>3. no existing answer for this participant (HSETNX)<br/>4. points = correct ? 100 + floor(100 x remaining / window) : 0<br/>5. add points to leaderboard, mark leaderboard dirty<br/>6. if answered count reaches online count, set close time to now
     alt accepted
         R-->>S2: correct, points, new total
         S2-->>P: answer_result accepted
@@ -127,7 +127,7 @@ sequenceDiagram
 - **No submissions after the close.** The answer script checks Redis `TIME` against the deadline itself; it doesn't rely on the status alone. So even if the workers are late closing the question (poll delay, a worker restart, a Redis failover), an answer received after the deadline is still rejected. The early close only ever moves the deadline *earlier*, never later. The question ID check stops answers to a previous question once the next one opens. An answer sent before the deadline but received after it is rejected, because server receive time is the rule (assumption in the requirements).
 - **NFR-13:** the client is acknowledged only after the script has written to Redis. If the reply is lost, resending the same request returns the stored result (FR-30).
 - **FR-19:** points use Redis `TIME`, not the client's or the instance's clock.
-- **FR-5:** when everyone online has answered, the script moves the deadline to now. The close then happens through the normal transition path (flow 5), so there is only one close code path.
+- **FR-5:** when everyone online has answered, the script sets the close time to now. The close then happens through the normal transition path (flow 5), so there is only one close code path. The **original deadline is kept separately** and is the one the speed bonus uses, so an early close can never change anyone's points (TRD §3.3).
 - **FR-20, FR-21:** only the submitter learns whether they were right, straight away. Nothing is broadcast per answer.
 
 ## 4. Leaderboard update
@@ -175,7 +175,7 @@ sequenceDiagram
         Sx->>R: quiz IDs in sched:transitions due by now
     end
     Sx->>R: transition script, expect question_open and version v
-    Note over R: re-check TIME against deadline<br/>status question_closed, version v+1<br/>schedule next transition at TIME + reveal<br/>add flush job for this question, due now
+    Note over R: re-check TIME against close time<br/>status question_closed, version v+1<br/>schedule next transition at TIME + reveal<br/>add flush job for this question, due now
     alt this worker won
         R-->>Sx: new state
         Sx->>R: PUBLISH question_closed with the correct option
