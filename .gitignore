@@ -1,0 +1,23 @@
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# env
+.env
+.env.*
+!.env.example
+
+# Go
+server/bin/
+*.test
+*.out
+coverage.*
+
+# Node / React
+node_modules/
+client/dist/
+
+# load test output
+loadtest/results/

@@ -1,0 +1,53 @@
+# Planning
+
+Last updated: 2026-09-28 · Deadline: _TBD_
+
+Working plan for the Real-Time Vocabulary Quiz challenge. The original brief is in [`../assignment.md`](../assignment.md).
+
+## Documents
+
+Read them in this order. Each one builds on the one before it.
+
+| Doc | Purpose | Status |
+|---|---|---|
+| [`context.md`](context.md) | Problem, scope, and the decisions everything else builds on (D1–D10) | current |
+| [`requirements.md`](requirements.md) | Functional and non-functional requirements, assumptions, resolved questions | agreed, pending final read-through |
+| [`../system-design/`](../system-design/) | Part 1 deliverable: architecture, components, data flow, technology choices | not started |
+| [`trd.md`](trd.md) | Technical requirements for the Go server: modules, Redis key schema, transition scripts, protocol details, error handling, test plan | not started |
+| [`tasks.md`](tasks.md) | Task breakdown derived from the TRD, with phases and status | draft (pre-TRD) |
+
+**How the docs relate:** the system design describes the **whole** feature for reviewers, including the mocked parts, at the level the brief asks for. The TRD covers only the component we build, down to the implementation detail. It links to the system design instead of repeating it.
+
+## Brief traceability
+
+Every requirement in the brief, mapped to the place that covers it. Before submitting, check every row.
+
+| # | Brief requirement | Covered by |
+|---|---|---|
+| B1 | Join a quiz via unique quiz ID (AC 1, Part 2.2) | FR-1, FR-8 to FR-13 |
+| B2 | Many users in one session at once (AC 1) | FR-9, NFR-1, load test |
+| B3 | Real-time, accurate, consistent scoring (AC 2, Part 2.2) | FR-16 to FR-22, NFR-12, NFR-13 |
+| B4 | Leaderboard of all participants, updated promptly (AC 3, Part 2.2) | FR-23 to FR-28, NFR-6 |
+| B5 | Architecture diagram and component descriptions (Part 1) | `docs/system-design/` |
+| B6 | Data flow, join → leaderboard (Part 1) | `docs/system-design/` |
+| B7 | Technologies with justification (Part 1) | `docs/system-design/` + ADRs |
+| B8 | AI Collaboration in Design (Submission 1) | `docs/ai-collaboration/` |
+| B9 | AI-assisted code marked, with verification (Part 2.3) | `docs/ai-collaboration/` + code pointers (D7) |
+| B10 | Scalability and trade-offs (Part 2.4) | NFR-1 to NFR-5e (room concurrency, fan-out efficiency), NFR-24 to NFR-26, D10 |
+| B11 | Performance under load (Part 2.4) | NFR-6 to NFR-11, load test results |
+| B12 | Reliability (Part 2.4) | NFR-12 to NFR-18 |
+| B13 | Maintainability (Part 2.4) | NFR-31 to NFR-35, D9 |
+| B14 | Monitoring and observability (Part 2.4) | NFR-27 to NFR-30 |
+| B15 | Run and test instructions (Submission 2) | root `README.md` |
+| B16 | Video, 5–10 min (Submission 3) | outside this repo |
+
+## Working rhythm
+
+For each piece of work:
+
+1. **Define.** Write the goal and acceptance criteria before building.
+2. **Explore.** List options and trade-offs when a real choice exists.
+3. **Decide.** Pick one and record why (in `context.md` or an ADR).
+4. **Build** against the acceptance criteria.
+5. **Verify.** Test, measure, review, and record what was checked and what it showed.
+6. **Record** the AI collaboration notes (D7).
