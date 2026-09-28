@@ -111,3 +111,29 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Verification (planned):**
   - Integration test: kill the instance between the database commit and the Redis delete, then check that the retry is idempotent and nothing is lost.
   - The reconciliation metric must read 0 after every load test.
+
+### AI-008: System design draft, architecture and data flow
+
+- **Date / phase:** 2026-09-28 · system design
+- **Task type:** architecture drafting, diagrams
+- **What the AI produced:** [`architecture.md`](../system-design/architecture.md) and [`data-flow.md`](../system-design/data-flow.md), with 10 Mermaid diagrams, plus seven design choices the flows needed that we hadn't discussed.
+- **My decisions on those choices:**
+
+| AI proposal | My decision |
+|---|---|
+| Redis `TIME` as the only clock | Accepted |
+| Correctness checked by the server against an in-memory answer-key cache | Accepted, with the condition that the cache is **partitioned well**, since one server handles many quizzes. Result: keyed by question set, immutable entries, single-flight loading, warmed at join |
+| Early close moves the deadline, so there is one close path | Accepted, **provided there is no time leak** (no submitting after a question closes). Result: the answer script checks the deadline itself, so a late close by the scheduler can't let late answers in |
+| Leaderboard ticks claimed with `SPOP` by any instance | Accepted. I noted the leaderboard is owned by the quiz, not a server, and asked for care with **read + write locking**. Result: a concurrency section. Redis runs scripts one at a time, there is no read-modify-write in Go, and in-process state is sharded by room with no lock held while writing to sockets |
+| Flush jobs with retry | Accepted, and **I split the backend into REST API, WebSocket gateway, and worker** from one codebase. My reasons: scale only the service under pressure (gateways for big rooms, workers for many rooms), and decoupled services are easier to scale and change |
+| Presence expiring after 30 s | Accepted at current scale |
+| Single Redis primary + replica | Accepted, on condition that we **document the concurrency ceiling** we expect, and run load and simulation tests if time allows |
+
+- **Catches:**
+  - **The split broke the database mock (found by the AI).** An in-memory repository works inside one process, but with three processes the worker's saved results would be invisible to the API. The AI laid out three options and recommended a real PostgreSQL. **I chose real PostgreSQL in Docker (D12)**, because it also makes the cache warm-up and delay-free answer validation easy to demonstrate, and multiple seeded question sets easy to manage.
+  - **One diagram misrepresented the design (found by the AI).** After the split, the first rendering of the services diagram routed the storage edges so the API appeared to connect to the gateway, and the gateway to call the worker. The design says the services never call each other. Storage edges were removed from that diagram, and the rule is stated in text.
+  - **One code path for the start (AI).** The first draft had the start command open the first question itself. Moving it to the API meant it could have become a second transition path. Instead the API only schedules the transition, and a worker applies it like any other.
+- **Verification:**
+  - Every Mermaid diagram was rendered with `mermaid-cli` (all 10 parse).
+  - The busiest diagrams were checked visually as images. That check found both the clutter in the system diagram and the misleading edges above.
+  - Design choices will be checked in implementation by: a late-answer test (submit after the deadline while the worker is paused), concurrent transition tests across two workers, and the planned load test for the Redis ceiling.

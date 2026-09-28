@@ -181,9 +181,9 @@ The hard part of the load is **concurrency inside one room**, not data volume. P
 
 ## 5. Assumptions
 
-- Questions are multiple choice with 2–4 options. Question content is mocked (static JSON question sets).
+- Questions are multiple choice with 2–4 options. Question sets are seeded into PostgreSQL; there is no authoring UI.
 - Auth is mocked: a dev endpoint issues signed tokens for a participant or host identity.
-- Persistent storage (question sets, answer history, final results) is PostgreSQL in the design. In the build it is mocked behind the same repository interface. Live state lives in Redis.
+- Persistent storage (question sets, answer history, final results) is PostgreSQL, run for real in the local stack with seeded question sets (D12). Live state lives in Redis.
 - Single region. Server clocks are NTP-synced (skew well under 100 ms), so any instance can act on a deadline written by another instance. (Alternatively, use Redis `TIME` as the single clock; decided in the TRD.)
 - Network latency differences between participants are not compensated. Speed bonuses use server receive time.
 - Collusion (participants sharing answers out of band) is out of scope.

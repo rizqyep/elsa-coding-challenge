@@ -26,7 +26,7 @@ Using AI tools is mandatory, and documenting how their output was verified is a 
 
 | Build properly | Build thin (demo only) | Mock | Out of scope |
 |---|---|---|---|
-| Go real-time server: connections, session join, quiz clock, scoring, leaderboard, fan-out across instances | React client that joins, answers, and renders the live leaderboard; minimal host view | Auth (signed tokens from a dev issuer), quiz content (static question sets), durable storage of final results | Quiz authoring UI, user accounts, payments, mobile apps, multi-region |
+| Go backend (REST API, WebSocket gateway, worker): connections, join, quiz clock, scoring, leaderboard, fan-out, answer history. Real Redis and PostgreSQL | React client that joins, answers, and renders the live leaderboard; minimal host view | Auth (signed tokens from a dev issuer). Question sets are seeded data, not an authoring service | Quiz authoring UI, user accounts, payments, mobile apps, multi-region |
 
 ## Decisions
 
@@ -44,6 +44,8 @@ A decision is `decided` only when its rationale is written down, either here or 
 | D8 | Version control | Local git for now; remote later | decided |
 | D9 | Server code organisation | Module-based; each module has domain / service / repository ([notes](#d9-server-code-organisation)) | decided |
 | D10 | Where quiz state lives | **Live state in Redis, static content persistent, WS servers stateless** ([notes](#d10-quiz-state-and-room-virtualisation)) | decided |
+| D11 | Deployable services | **One codebase, three services: REST API, WebSocket gateway, worker** ([notes](#d11-three-services-from-one-codebase)) | decided |
+| D12 | Persistent storage locally | **Real PostgreSQL in Docker Compose** with migrations and seeded question sets. The three services must share persistent data, which an in-memory mock can't do. It also makes the cache warm-up and delay-free answer validation demonstrable, and multiple question sets easy to manage | decided |
 
 ### D2: quiz mode
 
@@ -111,14 +113,19 @@ Full tactical DDD (aggregates, domain events, application services per use case)
 
 ```
 server/
-├── cmd/quizserver/main.go        # wiring only
+├── cmd/
+│   ├── api/main.go               # REST API: wiring only (D11)
+│   ├── ws/main.go                # WebSocket gateway: wiring only
+│   └── worker/main.go            # worker: wiring only
 └── internal/
     ├── quiz/                     # lifecycle state machine, questions, quiz clock
     ├── scoring/                  # scoring rules + atomic answer recording
     ├── leaderboard/              # ranking, tie-break, coalesced broadcast
     ├── session/                  # join, participants, presence
-    ├── realtime/                 # WebSocket transport, connection hub, protocol codec
+    ├── history/                  # batch writes of answers and final results to persistent storage
+    ├── realtime/                 # WebSocket transport, connection registry by room, protocol codec
     ├── fanout/                   # cross-instance pub/sub
+    ├── scheduler/                # per-instance loop: due transitions, leaderboard ticks, pending flushes
     └── platform/                 # config, logging, metrics, redis client
 ```
 
@@ -137,3 +144,23 @@ scoring/
 - The consuming module owns the interface (Go convention).
 - **Repository methods are whole operations, not generic CRUD.** For example, `RecordAnswer(...)` deduplicates and increments in one atomic step (a Lua script in Redis, a mutex in memory). A `Get` + `Save` pair would allow check-then-write races, and two concurrent submits would both score.
 - Modules without their own data (`realtime`, `fanout`, `platform`) have no repository. `fanout` exposes a `Broadcaster` interface with Redis and in-process implementations.
+
+### D11: three services from one codebase
+
+The backend is one Go module with three entry points: `cmd/api`, `cmd/ws`, and `cmd/worker`. Each wires together only the `internal/` modules it needs, and each deploys and scales on its own.
+
+| Service | Scales with | Holds |
+|---|---|---|
+| REST API | host request rate (low) | nothing |
+| WebSocket gateway | concurrent connections | its sockets and the connection registry |
+| Worker | number of active rooms (transitions, leaderboard ticks, flushes) | nothing; all work is claimed from Redis |
+
+**Why:**
+- **Scale only what is under pressure.** A 10,000-person room needs more gateways, not more workers. Many small rooms at once need more workers, not more gateways. With one combined server, both would scale together.
+- **Decoupled services.** The services never call each other. They share only Redis and PostgreSQL, so each can be deployed, restarted, or scaled without the others.
+- **Failures stay contained.** A gateway crash drops only its own sockets. A worker crash is invisible, because another worker picks up its due work. A slow flush to PostgreSQL can't take CPU from socket writes.
+
+**Costs:**
+- Three deployables instead of one. Locally they run from one `docker compose` file.
+- **If all workers are down, quizzes stop advancing**, so run at least 2 workers and alert when none are healthy.
+- Starting a quiz goes API → Redis schedule → worker, adding up to one poll interval (100 ms) before the first question.

@@ -12,7 +12,7 @@ Read them in this order. Each one builds on the one before it.
 |---|---|---|
 | [`context.md`](context.md) | Problem, scope, and the decisions everything else builds on (D1–D10) | current |
 | [`requirements.md`](requirements.md) | Functional and non-functional requirements, assumptions, resolved questions | agreed, pending final read-through |
-| [`../system-design/`](../system-design/) | Part 1 deliverable: architecture, components, data flow, technology choices | not started |
+| [`../system-design/`](../system-design/) | Part 1 deliverable: architecture, components, data flow, technology choices | in progress |
 | [`trd.md`](trd.md) | Technical requirements for the Go server: modules, Redis key schema, transition scripts, protocol details, error handling, test plan | not started |
 | [`tasks.md`](tasks.md) | Task breakdown derived from the TRD, with phases and status | draft (pre-TRD) |
 
