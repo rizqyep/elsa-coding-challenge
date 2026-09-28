@@ -196,3 +196,18 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - **Leaking the answer key is prevented by a separate type**, not by remembering to omit a field: only `PublicQuestion` (no correct option) can reach the protocol layer.
   - **The lobby has two due events** (start, expiry). A `StartRequested` flag tells the worker which one applies.
 - **Verification:** the two changed data-flow diagrams re-rendered with `mermaid-cli`. The quiz-code space (31⁶ ≈ 887 million) and collision rate (≈ 0.1% at a million stored quizzes) were computed. Section status is "draft for review" until I sign off.
+
+### AI-012: TRD sections 4–5 (Redis scripts, PostgreSQL schema)
+
+- **Date / phase:** 2026-09-28 · TRD
+- **Task type:** technical specification
+- **My decision going in:** no per-option counts in the reveal for now; `question_closed` carries only the correct option.
+- **What the AI produced:** [`trd.md`](../planning/trd.md) §4 (exact Redis keys, internal event format, nine Lua scripts with inputs, steps, and returns, the flush and finalise jobs) and §5 (PostgreSQL schema, quiz creation transaction, batch insert, reconciliation query, migrations, seed sets).
+- **Gaps the AI found while specifying, and design changes that followed:**
+  - **A quiz could advance without anyone being told.** In the approved design, the worker ran the transition script and *then* published. A crash between the two would change the state with no message sent. Fix: every script publishes its own room event in the same atomic step. Gateways build the client message from their question cache, so workers no longer need question content at all. Flows 2, 4, 5, and 6, the architecture text, and the Redis data model were updated, and all 10 diagrams re-rendered.
+  - **`WAIT` would silently confirm nothing** if sent as a separate call through a connection pool, because it only counts writes on its own connection. It must be pipelined with the answer script.
+  - **Scripts must not build key names** (a Redis Cluster rule). Keys that depend on state, like the current question's answers, are computed by the caller from state it read, and the script rejects the call if that state has changed (question ID check, state version check). Answer keys are named by question ID for this reason.
+  - **Removing presence on disconnect would be a bug.** A participant who moved to another gateway could be marked offline by the old one, triggering an early close too soon. Presence only expires.
+  - **A duplicate flush acknowledgement could decrement the pending counter twice.** The decrement only happens if the job was actually removed.
+  - **The finalise job must wait for every per-question flush.** A `pending_flush` counter in the room makes it re-queue itself until the answers are all saved.
+- **Verification:** all diagrams re-rendered with `mermaid-cli` after the change. The scripts and SQL are specifications at this point. They are TDD scope (D14), so their tests come first in implementation, driven by the shared test vectors (§3.5).

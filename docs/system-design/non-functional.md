@@ -82,7 +82,7 @@ The shared resource is the single Redis thread that runs the answer scripts. At 
 ### 2.2 Techniques that keep it fast
 
 - **Nothing slow on the answer path.** Correctness comes from the in-memory question cache. One Redis script does everything else. PostgreSQL is never touched (FR-33).
-- **Encode once, write many (NFR-5c).** Workers publish ready-to-send bytes. Gateways wrap them once in a gorilla prepared message and write the same frame to every local socket in the room.
+- **Encode once, write many (NFR-5c).** Scripts publish one compact event. Each gateway builds the client message once, wraps it in a gorilla prepared message, and writes the same frame to every local socket in the room.
 - **Batching.** Leaderboard updates are coalesced per room (≤ 5/s instead of one per answer). Presence refreshes and personal-rank lookups are pipelined. Answer history is written in one batch per question.
 - **Registry indexed by room (NFR-5a).** A broadcast touches only that room's connections, and no lock is held during socket writes (architecture §4).
 - **Backpressure isolation (NFR-5d, NFR-17).** Each connection has a bounded queue and its own writer goroutine, so a slow client can't slow anyone else down.

@@ -53,7 +53,7 @@ flowchart LR
 - **Rooms are virtual.** A quiz room is a set of Redis keys plus one pub/sub channel. It isn't tied to any process.
 - **No process owns a quiz.** Every worker runs the same loop. Transitions are Lua scripts with a version check, so exactly one worker applies each one (NFR-14).
 - **One clock.** Deadlines and answer receive times come from Redis `TIME` inside the scripts, so there is no clock skew between services.
-- **Broadcast once.** A room update is one pub/sub message, encoded once by the worker that produces it. Every gateway writes those same bytes to its local sockets for that room (NFR-5b, NFR-5c).
+- **Broadcast once.** A room update is one pub/sub event, published by the same Lua script that makes the change, so a change can never happen without being announced. Each gateway turns the event into the client message once and writes the same bytes to all its local sockets in that room (NFR-5b, NFR-5c).
 - **Redis keeps only what is live or not yet saved.** Each question's answers are batch-written to PostgreSQL after it closes and removed from Redis once the write is confirmed (FR-33, FR-34).
 
 ## 2. Services and modules
@@ -80,7 +80,7 @@ flowchart LR
         G_FAN["fanout: subscribe per local room"]
         G_RT --> G_SESS & G_SCORE & G_RANK
         G_SCORE --> G_CACHE
-        G_FAN -->|"room message bytes"| G_RT
+        G_FAN -->|"room events"| G_RT
     end
 
     subgraph wksvc["Worker"]
@@ -89,9 +89,7 @@ flowchart LR
         W_QUIZ["quiz: transitions"]
         W_LB["leaderboard: shared snapshots"]
         W_HIST["history: answer and result flushes"]
-        W_FAN["fanout: publish"]
         W_SCHED --> W_QUIZ & W_LB & W_HIST
-        W_QUIZ & W_LB --> W_FAN
     end
 
 ```
@@ -157,7 +155,7 @@ The three services **never call each other**. Each one talks only to Redis and P
 
 | | |
 |---|---|
-| Role | One scheduler loop per instance that claims due work from Redis: transitions every 100 ms, leaderboard ticks every 200 ms, pending flush jobs. Publishes room messages. Writes answer history and final results; reconciles totals at finish (FR-35) |
+| Role | One scheduler loop per instance that claims due work from Redis: transitions every 100 ms, leaderboard ticks every 200 ms, pending flush jobs. Room events are published by the scripts it runs, not by worker code. Writes answer history and final results; reconciles totals at finish (FR-35) |
 | State | None. All work is claimed from Redis, so any worker can do any job |
 | Scaling | Horizontal. At least 2 instances for availability; more if the number of active rooms grows. Claims are atomic, so adding workers never duplicates work |
 | Failure | Another worker picks up the same due work on its next poll. Flush jobs held by a dead worker become due again after 30 s. **If every worker is down, quizzes stop advancing**, so "no healthy workers" is a paging alert |
@@ -200,7 +198,7 @@ Every service instance handles many quizzes at once, and many instances touch th
 **Per-process state is partitioned by room and never shared between rooms.**
 - **Connection registry** (gateway): a map of room → set of local connections, split into shards by room ID, each with its own read/write lock. Joins and leaves lock only one shard. A broadcast copies the room's connection list under a read lock, releases the lock, then enqueues to each connection. No lock is held while writing to sockets.
 - **Per-connection write queue:** each socket has one bounded outbound queue and one writer goroutine. Only that goroutine writes to the socket. A full queue triggers the slow-client policy (NFR-17) instead of blocking the broadcast.
-- **Question cache** (gateway, and the worker for question content): keyed by **question-set ID**, not quiz ID. Two quizzes using the same set share one entry.
+- **Question cache** (gateway only; workers never need question content): keyed by **question-set ID**, not quiz ID. Two quizzes using the same set share one entry.
   - Entries are immutable once loaded, so reads need no lock beyond the map lookup.
   - Loads are de-duplicated (single-flight), so 1,000 joins arriving at once for a new quiz cause one database read.
   - The cache is warmed when the first local participant joins a room, so validating an answer never needs an external read.
@@ -216,7 +214,8 @@ Every key of a room contains the `{quizId}` hash tag, so all of a room's keys la
 | `quiz:{id}:roster` | hash | participant ID → display name | quiz |
 | `quiz:{id}:online` | sorted set | participant ID → last-seen time, refreshed by the gateway holding the connection | quiz |
 | `quiz:{id}:lb` | sorted set | participant ID → total score | quiz |
-| `quiz:{id}:q:{n}:answers` | hash | participant ID → option, correct, points, receive time | until that question's flush is confirmed |
+| `quiz:{id}:qids` | list | the quiz's question IDs in order, so transitions can pick the next question without the question set | quiz |
+| `quiz:{id}:ans:{questionId}` | hash | participant ID → option, correct, points, receive time | until that question's flush is confirmed |
 | `sched:transitions` | sorted set | quiz ID → time of its next transition | global |
 | `sched:lbdirty` | set | quiz IDs whose leaderboard changed since the last tick | global |
 | `sched:flush` | sorted set | pending flush job → time it may next be attempted | global |

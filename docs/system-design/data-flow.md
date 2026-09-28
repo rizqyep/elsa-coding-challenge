@@ -82,17 +82,17 @@ sequenceDiagram
     R-->>API: accepted
     API-->>H: 202 Accepted
     W->>R: due transition found on next poll
-    W->>R: transition script, expect status lobby and version v
-    Note over R: status question_open, question 1<br/>deadline = TIME + window, version v+1<br/>reschedule in sched:transitions at deadline
-    R-->>W: new room state
-    W->>W: build question message from cached question set, no answer key
-    W->>R: PUBLISH room channel, question message
-    R-->>ALL: question message, once per subscribed gateway
+    W->>R: transition script, expect version v
+    Note over R: status question_open, first ID from the question list<br/>deadline = TIME + window, version v+1<br/>reschedule in sched:transitions at deadline<br/>PUBLISH state event, in the same script
+    R-->>W: applied
+    R-->>ALL: state event, once per subscribed gateway
+    ALL->>ALL: build question message from own question cache, no answer key, encode once
     ALL-->>PS: same bytes written to every local socket in the room
 ```
 
 - **FR-3:** only a `host` token can start, only from `lobby`, and only with at least one participant.
-- **One transition path:** the API doesn't open the first question itself. It schedules the transition for "now", and a worker applies it like any other. Only workers publish room state, and there is one code path for every transition. The cost is at most one poll interval (100 ms) between pressing Start and the first question.
+- **State change and announcement are one atomic step.** The transition script publishes the state event itself. If the worker crashes right after the script, the event is already out, so a quiz can't advance without participants being told. Gateways turn the event into the client message using their own question cache, so workers need no question content at all.
+- **One transition path:** the API doesn't open the first question itself. It schedules the transition for "now", and a worker applies it like any other. Only the transition script changes room state, and there is one code path for every transition. The cost is at most one poll interval (100 ms) between pressing Start and the first question.
 - **FR-4:** from here on, nobody sends commands. Every later transition comes from the workers (flow 5).
 - **NFR-8:** the question reaches every participant through one publish. Fairness depends only on pub/sub and socket-write latency, not on which instance a participant is connected to.
 - **FR-21:** the answer key never leaves the server's memory.
@@ -145,17 +145,16 @@ sequenceDiagram
     end
     Note over Sx,R: SPOP is atomic, so each dirty quiz<br/>is taken by exactly one worker per tick
     Sx->>R: leaderboard script for quiz Q
-    Note over R: top 10 with scores, participant count,<br/>increment leaderboard version
-    R-->>Sx: top 10, count, version
-    Sx->>R: fetch display names for the top 10 from roster
-    Sx->>Sx: encode leaderboard message once
-    Sx->>R: PUBLISH room channel, leaderboard message
-    R-->>ALL: leaderboard message
+    Note over R: top 10 with scores and names, participant count,<br/>increment leaderboard version,<br/>PUBLISH leaderboard event, in the same script
+    R-->>Sx: done
+    R-->>ALL: leaderboard event
+    ALL->>ALL: encode client message once per gateway
     ALL-->>PS: same bytes to every local socket
 ```
 
 - **FR-25, NFR-10:** a burst of 10,000 answers produces at most 5 leaderboard messages per second per room, not 10,000.
-- **FR-26, NFR-5c:** the message is identical for everyone, so it's encoded once and written as the same bytes to every socket.
+- **FR-26, NFR-5c:** the message is identical for everyone, so each gateway encodes it once and writes the same bytes to every local socket.
+- If a worker crashes between `SPOP` and the script, that one tick is lost. The next score change or the question close marks the room again, so the leaderboard catches up within one question at worst.
 - **FR-28:** clients drop any leaderboard with a version lower than the last one they rendered.
 - **NFR-6:** worst-case added delay is one tick (200 ms) plus publish and write time.
 
@@ -175,11 +174,11 @@ sequenceDiagram
         Sx->>R: quiz IDs in sched:transitions due by now
     end
     Sx->>R: transition script, expect question_open and version v
-    Note over R: re-check TIME against close time<br/>status question_closed, version v+1<br/>schedule next transition at TIME + reveal<br/>add flush job for this question, due now
+    Note over R: re-check TIME against close time<br/>status question_closed, version v+1<br/>schedule next transition at TIME + reveal<br/>add flush job, mark leaderboard dirty<br/>PUBLISH state event, in the same script
     alt this worker won
-        R-->>Sx: new state
-        Sx->>R: PUBLISH question_closed with the correct option
-        R-->>ALL: question_closed
+        R-->>Sx: applied
+        R-->>ALL: state event
+        ALL->>ALL: question_closed message with the correct option from own cache
         ALL->>R: pipelined rank lookups for local participants
         ALL-->>PS: question_closed, then each participant's own rank
     else another worker already did it
@@ -213,10 +212,9 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Sx->>R: transition script after the last reveal
-    Note over R: status finished, version v+1<br/>add final-results flush job
-    R-->>Sx: new state
-    Sx->>R: PUBLISH quiz finished with final top 10
-    R-->>ALL: quiz finished
+    Note over R: status finished, version v+1<br/>add final-results job<br/>PUBLISH finished event with final top 10, in the same script
+    R-->>Sx: applied
+    R-->>ALL: finished event
     ALL-->>PS: final standings, full leaderboard available on request
 
     Sx->>R: claim final-results job, only after all question flushes are done
