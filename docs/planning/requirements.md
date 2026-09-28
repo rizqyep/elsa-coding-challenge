@@ -49,7 +49,7 @@ Priority: **M** = must, **S** = should, **C** = could.
 | FR-10 | Joining is allowed in `lobby` and while the quiz is running. A late joiner starts at 0 points and can answer the current question if it is still open | M | AC 1 |
 | FR-11 | On join, the participant receives a snapshot: quiz state, current question (without the answer) and its deadline, the leaderboard, and their own score | M | AC 2, 3 |
 | FR-12 | Rejoining with the same identity restores the same participant and score; no duplicate entry is created. If the same identity has two connections, the newer one replaces the older | M | AC 2 |
-| FR-13 | Joining an unknown or expired quiz returns a clear error. Joining a finished quiz returns its final leaderboard, read-only | M | AC 1 |
+| FR-13 | Joining an unknown or expired quiz returns a clear error. Joining a finished quiz returns its final leaderboard, read-only, served from persistent storage once the live data is released | M | AC 1 |
 | FR-14 | Everyone in the quiz sees the participant count update as people join and leave | S | AC 1 |
 | FR-15 | Display names are 1–20 characters and validated. They need not be unique; ranking is by identity, not name _(proposal)_ | M | — |
 
@@ -59,7 +59,7 @@ Priority: **M** = must, **S** = should, **C** = could.
 |---|---|---|---|
 | FR-16 | A participant can submit one answer (an option ID) to the currently open question | M | AC 2 |
 | FR-17 | The server accepts an answer only if: the quiz is in `question_open`, the question ID matches the current question, the server received it before the deadline, and the participant has no accepted answer for that question yet | M | AC 2 |
-| FR-18 | The first accepted answer is final. Later submissions for the same question are rejected as duplicates and do not change the score. Resending the same request (same request ID) returns the original result | M | AC 2 |
+| FR-18 | The first accepted answer is final. Later submissions for the same question are rejected as duplicates and do not change the score. A resend while the question is open returns the original result. After the question closes, a resend is rejected as `question_closed`, and the participant's total in their snapshot is authoritative | M | AC 2 |
 | FR-19 | A correct answer scores **100 points + a speed bonus of up to 100**: `bonus = floor(100 × time_remaining / window)`, using server receive time. Wrong answers score 0. Scores never go negative. Maximum per question: 200 | M | AC 2 |
 | FR-20 | The submitter immediately receives the result: accepted or rejected (with reason), correct or not, points earned, and new total | M | AC 2 |
 | FR-21 | The correct answer is never sent to any client before the question closes. The only early signal is a submitter learning whether their own answer was correct | M | AC 2 |
@@ -84,6 +84,15 @@ Priority: **M** = must, **S** = should, **C** = could.
 | FR-29 | A disconnected or stale participant resumes from a fresh snapshot at the room's current point. Questions that closed while they were away score 0 for them; there is no catch-up. They can answer the current question if it is still open | M | AC 2, 3 |
 | FR-30 | An answer accepted before a disconnect counts exactly once, even if the client resends it after reconnecting | M | AC 2 |
 | FR-31 | The host disconnecting after start does not affect the quiz | M | — |
+
+### 3.6 Answer history
+
+| ID | Requirement | Pri | Brief |
+|---|---|---|---|
+| FR-32 | Every accepted answer is stored persistently: quiz, question, participant, chosen option, correct or not, points, server receive time | M | AC 2 |
+| FR-33 | A closed question's answers are written to persistent storage as one batch, after the question closes (not during the answer burst) | M | AC 2 |
+| FR-34 | A question's answer records are removed from Redis **only after** the batch write is durably acknowledged. The same rule applies to the leaderboard and final results when the quiz finishes | M | AC 2 |
+| FR-35 | At quiz finish, each participant's total recomputed from the stored answers must equal their live leaderboard score. Any mismatch is logged and counted (NFR-27) | S | AC 2 |
 
 ## 4. Non-functional requirements
 
@@ -126,11 +135,12 @@ The hard part of the load is **concurrency inside one room**, not data volume. P
 |---|---|
 | NFR-12 | **Exactly-once scoring** per (quiz, question, participant) under concurrent submissions, retries, reconnects, and multiple instances |
 | NFR-13 | An answer is acknowledged only after it is durably recorded in the shared store. No ack means the client may retry safely |
+| NFR-13a | Persistent writes are never on the answer path. Batch flushes are idempotent (unique key on quiz, question, participant) and crash-safe: a pending flush survives the death of the instance that started it and is retried by any instance until acknowledged |
 | NFR-14 | No instance owns a quiz. If an instance dies, its clients reconnect to any other instance and the quiz keeps running on schedule. Every state transition (open, close, next, finish) happens **exactly once**, even when several instances notice the same deadline. Deadline slip ≤ 250 ms _(proposal)_ |
 | NFR-15 | If the shared store is unavailable, answers are rejected with a retryable error (never falsely acknowledged), and the instance reports not-ready |
 | NFR-16 | Graceful shutdown: stop accepting connections, tell clients to reconnect elsewhere, drain within 30 s |
 | NFR-17 | Slow clients cannot block delivery to others. If a client's outbound queue overflows, its queued messages are dropped and it is resynced with a fresh snapshot, or disconnected if it stays behind. A stale client always resumes **at the room's current point**; nothing is replayed |
-| NFR-18 | Live quiz data in Redis expires automatically after the quiz ends _(proposal: 24 h)_. The final leaderboard is persisted first (FR-27a) |
+| NFR-18 | Redis holds only data that is live or not yet persisted. Answer records are released per question after their flush (FR-34); the rest of a quiz's data is released after its final results are persisted. A TTL _(proposal: 24 h)_ remains as a safety net, and it is extended while a flush is still pending, so unpersisted data is never lost to expiry |
 
 ### Security
 
@@ -154,7 +164,7 @@ The hard part of the load is **concurrency inside one room**, not data volume. P
 
 | ID | Requirement |
 |---|---|
-| NFR-27 | Metrics endpoint with at least: active connections, joins, answers by outcome, NFR-6/7/8 latencies as histograms, broadcast duration, store latency, dropped messages, errors by code |
+| NFR-27 | Metrics endpoint with at least: active connections, joins, answers by outcome, NFR-6/7/8 latencies as histograms, broadcast duration, store latency, dropped messages, errors by code, pending and failed flushes, score reconciliation mismatches (FR-35, expected 0) |
 | NFR-28 | Structured logs carrying quiz ID, participant ID, connection ID, and request ID |
 | NFR-29 | Liveness and readiness endpoints. Readiness reflects shared-store health |
 | NFR-30 | Documented alerts with thresholds tied to the targets above |
@@ -173,7 +183,7 @@ The hard part of the load is **concurrency inside one room**, not data volume. P
 
 - Questions are multiple choice with 2–4 options. Question content is mocked (static JSON question sets).
 - Auth is mocked: a dev endpoint issues signed tokens for a participant or host identity.
-- Final results are "persisted" through a mocked sink (log or in-memory). Live state lives in Redis.
+- Persistent storage (question sets, answer history, final results) is PostgreSQL in the design. In the build it is mocked behind the same repository interface. Live state lives in Redis.
 - Single region. Server clocks are NTP-synced (skew well under 100 ms), so any instance can act on a deadline written by another instance. (Alternatively, use Redis `TIME` as the single clock; decided in the TRD.)
 - Network latency differences between participants are not compensated. Speed bonuses use server receive time.
 - Collusion (participants sharing answers out of band) is out of scope.

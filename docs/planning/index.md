@@ -26,12 +26,12 @@ Every requirement in the brief, mapped to the place that covers it. Before submi
 |---|---|---|
 | B1 | Join a quiz via unique quiz ID (AC 1, Part 2.2) | FR-1, FR-8 to FR-13 |
 | B2 | Many users in one session at once (AC 1) | FR-9, NFR-1, load test |
-| B3 | Real-time, accurate, consistent scoring (AC 2, Part 2.2) | FR-16 to FR-22, NFR-12, NFR-13 |
+| B3 | Real-time, accurate, consistent scoring (AC 2, Part 2.2) | FR-16 to FR-22, FR-32 to FR-35, NFR-12, NFR-13, NFR-13a |
 | B4 | Leaderboard of all participants, updated promptly (AC 3, Part 2.2) | FR-23 to FR-28, NFR-6 |
 | B5 | Architecture diagram and component descriptions (Part 1) | `docs/system-design/` |
 | B6 | Data flow, join → leaderboard (Part 1) | `docs/system-design/` |
 | B7 | Technologies with justification (Part 1) | `docs/system-design/` + ADRs |
-| B8 | AI Collaboration in Design (Submission 1) | `docs/ai-collaboration/` |
+| B8 | AI Collaboration in Design (Submission 1) | [`docs/ai-collaboration/`](../ai-collaboration/index.md) (AI-001 to AI-006 so far) |
 | B9 | AI-assisted code marked, with verification (Part 2.3) | `docs/ai-collaboration/` + code pointers (D7) |
 | B10 | Scalability and trade-offs (Part 2.4) | NFR-1 to NFR-5e (room concurrency, fan-out efficiency), NFR-24 to NFR-26, D10 |
 | B11 | Performance under load (Part 2.4) | NFR-6 to NFR-11, load test results |

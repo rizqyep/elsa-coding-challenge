@@ -88,6 +88,21 @@ A quiz room is therefore virtual. It exists as Redis keys plus a pub/sub channel
 - The winner publishes the new state on the quiz channel, and every instance pushes it to its local sockets.
 - The early close (everyone answered, FR-5) goes through the same script, so there is one code path for transitions.
 
+**Data lifecycle.** Redis holds only what is live or not yet persisted. PostgreSQL holds everything that has been persisted.
+
+Only the **leaderboard** carries data across the whole quiz. Everything else in Redis is either a small control record or belongs to a single question.
+
+| Data | Scope | In Redis | Released when |
+|---|---|---|---|
+| Leaderboard (participant → total) | quiz lifetime | yes | final results persisted |
+| Room control record: status, current question index, deadline, version | quiz lifetime, but a fixed ~200 bytes; it *is* the virtual room (D10) | yes | final results persisted |
+| Participant roster (display names), presence | quiz lifetime; one entry per participant | yes | final results persisted |
+| Current question's answer records (dedup, retries, early-close tracker) | one question | yes | that question's batch write is durably acknowledged |
+| Question content and answer keys | static | **no**: loaded from persistent storage and cached in each instance's memory (immutable) | — |
+| Answer history, final results | permanent | no (PostgreSQL) | — |
+
+Per-room Redis memory is therefore the leaderboard + roster (each grows with participants, not questions), plus one question's answer records (about 1 MB at 10,000 participants). It does not grow with quiz length. The rule is "delete only after a durable acknowledgement". An in-memory queue inside an instance doesn't count, because it dies with the instance. Pending flushes are tracked in Redis so any instance can retry them.
+
 This removes quiz ownership entirely, so we don't need a lease or takeover logic. The cost is Redis load from polling, which is small with one sorted set query per interval per instance, and a deadline slip bounded by the poll interval.
 
 ### D9: server code organisation
