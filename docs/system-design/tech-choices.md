@@ -20,6 +20,7 @@ Each choice is justified against our requirements ([`../planning/requirements.md
 ## Backend: Go
 
 **Why:**
+- **It's the language I know best.** I can review AI-generated code line by line and catch concurrency mistakes myself, which is a responsibility the brief explicitly places on me.
 - **One goroutine per connection is cheap.** Stacks start at a few KB, so a reader and a writer goroutine per socket fits the ≤ 50 KB per connection budget (NFR-4) with simple, blocking-style code.
 - **Uses every core in one process.** Fanning a message out to 20,000 local sockets (NFR-3) spreads across CPUs without clustering or worker processes.
 - **Concurrency primitives match the design:** channels for each connection's bounded outbound queue, `sync.RWMutex` for the sharded connection registry, `context` for shutdown and timeouts.
@@ -100,7 +101,7 @@ Each choice is justified against our requirements ([`../planning/requirements.md
 | In-memory mock | Can't be shared across the three services (D11) |
 | A document store (e.g. MongoDB) | No advantage for this relational, append-mostly data, and a weaker fit for the uniqueness guarantee |
 
-**Libraries:** `jackc/pgx` v5 with a connection pool; multi-row inserts for batch flushes; `goose` for migrations and seed data.
+**Libraries:** `jackc/pgx` v5 with a connection pool; multi-row inserts for batch flushes; `goose` for migrations and seed data. pgx also gives direct control over transactions (isolation levels, batched statements) if later writes need more than single-statement atomicity, e.g. writing final results and marking the quiz archived in one transaction.
 
 ## Load balancer
 

@@ -1,6 +1,6 @@
 # System design
 
-Status: **draft for review** · Last updated: 2026-09-28
+Status: **complete, pending final review** · Last updated: 2026-09-28
 
 System design for the real-time vocabulary quiz (Part 1 of the [brief](../assignment.md)). It builds on the agreed [requirements](../planning/requirements.md) and the decisions in [context](../planning/context.md).
 
@@ -8,12 +8,12 @@ System design for the real-time vocabulary quiz (Part 1 of the [brief](../assign
 
 | Brief section | Document | Status |
 |---|---|---|
-| Architecture diagram | [`architecture.md`](architecture.md) §1–2 | draft |
-| Component descriptions | [`architecture.md`](architecture.md) §3–5 | draft |
-| Data flow, join → leaderboard | [`data-flow.md`](data-flow.md) | draft |
-| Technologies and tools, with justification | [`tech-choices.md`](tech-choices.md) | draft |
-| Scalability, performance, reliability, observability, trade-offs | `non-functional.md` | not started |
-| Key decisions | `decisions/` (ADRs) | not started |
+| Architecture diagram | [`architecture.md`](architecture.md) §1–2 | done |
+| Component descriptions, concurrency model, Redis data model | [`architecture.md`](architecture.md) §3–6 | done |
+| Data flow, join → leaderboard | [`data-flow.md`](data-flow.md) | done |
+| Technologies and tools, with justification | [`tech-choices.md`](tech-choices.md) | done |
+| Scalability (with the capacity ceiling), performance, reliability, observability, security, trade-offs | [`non-functional.md`](non-functional.md) | done |
+| Key decisions, with options and rationale | [`../planning/context.md`](../planning/context.md#decisions) (D1–D12) | done |
 | AI collaboration in design | [`../ai-collaboration/`](../ai-collaboration/index.md) | ongoing |
 
 ## The design in six points

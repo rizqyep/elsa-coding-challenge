@@ -1,6 +1,6 @@
 # Requirements
 
-Status: **agreed, pending final read-through** · Last updated: 2026-09-28
+Status: **agreed** · Last updated: 2026-09-28
 
 Functional and non-functional requirements for the real-time quiz. Sources: the brief ([`../assignment.md`](../assignment.md)) and the decisions in [`context.md`](context.md). Items marked _(proposal)_ are ours, not the brief's, and need sign-off.
 

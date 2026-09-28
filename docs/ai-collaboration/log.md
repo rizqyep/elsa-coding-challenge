@@ -137,3 +137,28 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - Every Mermaid diagram was rendered with `mermaid-cli` (all 10 parse).
   - The busiest diagrams were checked visually as images. That check found both the clutter in the system diagram and the misleading edges above.
   - Design choices will be checked in implementation by: a late-answer test (submit after the deadline while the worker is paused), concurrent transition tests across two workers, and the planned load test for the Redis ceiling.
+
+### AI-009: Technology choices and non-functional design
+
+- **Date / phase:** 2026-09-28 · system design
+- **Task type:** technology evaluation, capacity estimation, failure analysis
+- **What the AI produced:** [`tech-choices.md`](../system-design/tech-choices.md) (choice, reason tied to requirement IDs, and rejected alternatives for each layer) and [`non-functional.md`](../system-design/non-functional.md) (capacity estimates, the concurrency ceiling, latency budgets, failure modes, metrics and alerts, security, trade-offs).
+- **My decisions:**
+  - gorilla/websocket accepted, for encode-once prepared messages.
+  - Redis pub/sub accepted over Streams, since versioned snapshots make replay unnecessary.
+  - **Go: my reason is that I know it best**, so I can review and advise on the implementation responsibly. The AI's draft had only technical reasons; mine is now listed first.
+  - pgx accepted, noting it also gives control over transactions if later writes need them.
+- **What the AI's analysis showed:**
+  - **A single room is limited by gateway egress, not Redis.** Answer scripts for a 10,000-person burst use about 10% of one Redis core. Leaderboard updates cost about 400 Mbit/s across gateways during the burst. So the first limit for one big room is the gateways, and the mitigations (skip unchanged ticks, adaptive interval, binary encoding) target that.
+  - **The ceiling for one Redis primary**, which I asked to be stated explicitly: about 40,000 answers per second across the system, which is about 80,000 participants answering in the same 2 s, or about 800,000 concurrent participants when rooms are staggered.
+  - **Redis replication is asynchronous**, which conflicts with NFR-13 ("ack means recorded"). The AI recommended `WAIT 1 50` after each answer script, acking anyway but counting it if the replica is down, and was explicit that this narrows the loss window rather than guaranteeing zero loss.
+- **Catches:**
+  - The AI had planned separate ADR files. On review they would have duplicated the decision records already in `context.md` (D1–D12, each with options and rationale). The system design links to those instead.
+  - A limitation found during the failure analysis: while PostgreSQL is down, a gateway that has never cached a question set can't accept joins for it. This is documented rather than hidden.
+- **Verification:**
+  - **The capacity numbers are estimates** from typical per-operation costs. They are labelled that way in the document, and the load test and room simulator (T017) must replace them with measured values.
+  - Library capabilities the design relies on (gorilla's `PreparedMessage` and write buffer pool, go-redis script handling) are stated from the AI's knowledge and **must be confirmed against the library docs** when implementation starts.
+  - I reviewed both documents before closing the design phase.
+- **Follow-up decisions:**
+  - **Replica durability:** ship the simple `WAIT 1 50` version for now. Later, work out something more concrete: an async retry with backoff, or research into other Redis behaviour that guarantees replica writes better. The AI added starting points: `min-replicas-to-write`, `WAITAOF`, and durable Redis-compatible services, each with what needs checking.
+  - **PostgreSQL down at join:** I asked for a careful retry with backoff on question-set loads. It is now capped exponential backoff with jitter, shared across concurrent joins through single-flight, and ends in a retryable error to the client.
