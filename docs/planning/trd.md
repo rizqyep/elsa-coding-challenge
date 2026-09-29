@@ -253,7 +253,7 @@ type Room struct {
 | `question_closed` (i) | `i = QuestionCount − 1` | `finished` | enqueue finalise job. Event `QuizFinished` |
 | `finished`, `expired` | — | — | terminal; nothing scheduled |
 
-Every transition increments `StateVersion`. A transition is applied only if the stored version equals the version the worker read (exactly-once, NFR-14).
+Every transition increments `StateVersion`. **Exactly-once (NFR-14) comes from the transition script deciding and applying in one atomic step:** after any applied transition the next one is in the future (window ≥ 5 s, reveal ≥ 2 s), so competing workers find nothing due. The expected-version argument is an extra guard, not the mechanism (task-13 mutation finding).
 
 **Commands** (not transitions; they change fields the scheduler later acts on):
 

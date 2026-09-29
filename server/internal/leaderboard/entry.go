@@ -6,7 +6,7 @@ import (
 )
 
 // TopN is how many entries live updates carry (FR-26).
-const TopN = 10
+const TopN = quiz.TopN
 
 // Entry is one ranked participant.
 type Entry struct {

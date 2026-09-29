@@ -166,3 +166,7 @@ func boolField(b bool) string {
 }
 
 func redisZ(member string) redis.Z { return redis.Z{Score: 0, Member: member} }
+
+func redisZScore(member string, score int64) redis.Z {
+	return redis.Z{Score: float64(score), Member: member}
+}
