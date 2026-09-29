@@ -143,3 +143,28 @@ func TestDial_RetriesAfter503(t *testing.T) {
 		t.Errorf("%d attempts in %v; want a retry after about 1 s", calls, time.Since(start))
 	}
 }
+
+// Sampled validation still checks the first message of each type, then every Nth.
+func TestClient_SampledValidation(t *testing.T) {
+	leak := strings.Replace(q("4"), `"closeAt":16000`, `"closeAt":16000,"correctOptionId":"b"`, 1)
+	lb := func(v string) string {
+		return `{"v":1,"type":"leaderboard","data":{"version":` + v + `,"participantCount":1,"top":[]}}`
+	}
+	frames := []string{leak, lb("1"), lb("2"), lb("3"), `{"v":1,"type":"leaderboard","data":{"version":4}}`, lb("5")}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := DialWith(ctx, fakeServer(t, frames...), "tok", DialOptions{ValidateEvery: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.Close)
+	waitCount(t, c, len(frames))
+	v := c.Violations()
+	// The leaked key is the first question: checked. The invalid 4th leaderboard is the 4th of its type: checked.
+	if len(v) != 2 {
+		t.Fatalf("violations %v; want the first question and the 4th leaderboard checked", v)
+	}
+	if c.LeaderboardVersion() != 5 {
+		t.Errorf("leaderboard version %d, want 5", c.LeaderboardVersion())
+	}
+}

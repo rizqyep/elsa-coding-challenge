@@ -21,6 +21,7 @@ import (
 // archived results to check totals against. Faults use the Docker CLI and Toxiproxy.
 type Compose struct {
 	BaseURL   string // e.g. http://localhost:8080
+	Origin    string // Origin header on WebSockets; BaseURL unless connecting by another address
 	Project   string // Compose project name, "quiz"
 	Toxiproxy string // e.g. http://127.0.0.1:8474; empty without the chaos profile
 	DB        *pgxpool.Pool
@@ -37,7 +38,8 @@ func NewCompose(ctx context.Context, baseURL, postgresDSN string) (*Compose, err
 		pool.Close()
 		return nil, fmt.Errorf("postgres: %w", err)
 	}
-	return &Compose{BaseURL: strings.TrimRight(baseURL, "/"), Project: "quiz", Toxiproxy: "http://127.0.0.1:8474", DB: pool,
+	base := strings.TrimRight(baseURL, "/")
+	return &Compose{BaseURL: base, Origin: base, Project: "quiz", Toxiproxy: "http://127.0.0.1:8474", DB: pool,
 		http: &http.Client{Timeout: 15 * time.Second}}, nil
 }
 

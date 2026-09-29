@@ -27,7 +27,7 @@ func quizWith(ctx context.Context, t *testing.T, window time.Duration) (testkit.
 // joinAs connects with tok and joins code, returning the client and its snapshot.
 func joinAs(ctx context.Context, t *testing.T, tok testkit.Token, code, name string) (*testkit.Client, testkit.Message) {
 	t.Helper()
-	c, err := testkit.Dial(ctx, env.WSURL(), tok.Token, env.BaseURL)
+	c, err := testkit.Dial(ctx, env.WSURL(), tok.Token, env.Origin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestE2E_HostDisconnectAfterStart_QuizContinues(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	host, code := quizWith(ctx, t, 5*time.Second)
-	h, err := testkit.Dial(ctx, env.WSURL(), host.Token, env.BaseURL)
+	h, err := testkit.Dial(ctx, env.WSURL(), host.Token, env.Origin)
 	if err != nil {
 		t.Fatal(err)
 	}

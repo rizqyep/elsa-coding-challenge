@@ -24,6 +24,7 @@ type RoomSpec struct {
 	NoAnswerRatio float64       // share of questions a participant leaves unanswered
 	SlowRatio     float64       // share of participants that read slowly
 	SlowReadDelay time.Duration // their pause before each read; 200 ms when zero
+	ValidateEvery int           // 0 validates every message; N checks the first of each type then every Nth
 	Seed          uint64
 	Live          *Live // optional counters updated while the run is in progress
 }
@@ -189,6 +190,19 @@ start:
 	}
 	cancel()
 	wg.Wait()
+	for _, p := range players {
+		p.mu.Lock()
+		for _, a := range p.lbSeen {
+			r.lbSeen[a.version] = append(r.lbSeen[a.version], a.at)
+		}
+		r.nfr6 = append(r.nfr6, p.accepted...)
+		for rec, ds := range map[*Recorder][]time.Duration{&r.nfr7: p.nfr7, &r.nfr8: p.nfr8, &r.nfr9: p.nfr9, &r.rejoin: p.rejoinGap} {
+			for _, d := range ds {
+				rec.Add(d)
+			}
+		}
+		p.mu.Unlock()
+	}
 
 	res := &Result{Code: code, Participants: spec.Participants, Joined: int(r.joined.Load()), Finished: int(r.done.Load()),
 		NFR7: r.nfr7.Summary(), NFR8: r.nfr8.Summary(), NFR9: r.nfr9.Summary(), TransitionLag: r.lag.Summary(),
@@ -239,7 +253,7 @@ func (w *watcher) loop(ctx context.Context) {
 	w.seen = map[string]bool{}
 	var mu sync.Mutex
 	for ctx.Err() == nil {
-		c, err := DialWith(ctx, w.r.env.WSURL(), w.host.Token, DialOptions{Origin: w.r.env.BaseURL, NoLog: true, OnMessage: func(m Message) {
+		c, err := DialWith(ctx, w.r.env.WSURL(), w.host.Token, DialOptions{Origin: w.r.env.Origin, NoLog: true, OnMessage: func(m Message) {
 			mu.Lock()
 			defer mu.Unlock()
 			switch m.Type {
@@ -302,6 +316,17 @@ type player struct {
 	decided   map[string]bool
 	pending   map[string]pendingAnswer // request id → answer
 	counted   map[string]bool          // questions whose result was counted
+
+	// Measurements stay per player, under p.mu, and are merged after the run: one shared lock for
+	// every client's leaderboard arrivals stalled the simulator's reads at 10,000 clients (task-29).
+	lbSeen                      []lbArrival
+	accepted                    []time.Time
+	nfr7, nfr8, nfr9, rejoinGap []time.Duration
+}
+
+type lbArrival struct {
+	version int64
+	at      time.Time
 }
 
 func (p *player) loop(ctx context.Context, delay time.Duration) {
@@ -317,7 +342,7 @@ func (p *player) loop(ctx context.Context, delay time.Duration) {
 	}
 	p.id = tok.ParticipantID
 	for attempt := 0; ctx.Err() == nil; attempt++ {
-		opts := DialOptions{Origin: p.r.env.BaseURL, NoLog: true, OnMessage: p.onMessage}
+		opts := DialOptions{Origin: p.r.env.Origin, NoLog: true, OnMessage: p.onMessage, ValidateEvery: p.r.spec.ValidateEvery}
 		if p.slow {
 			opts.ReadDelay = p.r.spec.SlowReadDelay
 		}
@@ -366,9 +391,9 @@ func (p *player) onMessage(m Message) {
 	defer p.mu.Unlock()
 	switch m.Type {
 	case "snapshot":
-		p.r.nfr9.Add(m.At.Sub(p.joinSent))
+		p.nfr9 = append(p.nfr9, m.At.Sub(p.joinSent))
 		if !p.droppedAt.IsZero() {
-			p.r.rejoin.Add(m.At.Sub(p.droppedAt))
+			p.rejoinGap = append(p.rejoinGap, m.At.Sub(p.droppedAt))
 			p.droppedAt = time.Time{}
 		}
 		if !p.joined {
@@ -412,10 +437,7 @@ func (p *player) onMessage(m Message) {
 		delete(p.pending, m.ID)
 	case "leaderboard":
 		if !p.slow {
-			p.r.mu.Lock()
-			v := num(m.Data["version"])
-			p.r.lbSeen[v] = append(p.r.lbSeen[v], m.At)
-			p.r.mu.Unlock()
+			p.lbSeen = append(p.lbSeen, lbArrival{num(m.Data["version"]), m.At})
 		}
 	case "quiz_finished":
 		p.finish()
@@ -436,7 +458,7 @@ func (p *player) question(q map[string]any, arrived time.Time, live bool) {
 	info := qinfo{openedAt: num(q["openedAt"]), deadline: num(q["deadline"]), closeAt: num(q["closeAt"])}
 	p.questions[id] = info
 	if live && !p.slow {
-		p.r.nfr8.Add(arrived.Sub(time.UnixMilli(info.openedAt)))
+		p.nfr8 = append(p.nfr8, arrived.Sub(time.UnixMilli(info.openedAt)))
 	}
 	var opts []string
 	for _, o := range q["options"].([]any) {
@@ -470,7 +492,7 @@ func (p *player) result(m Message) {
 		return
 	}
 	delete(p.pending, m.ID)
-	p.r.nfr7.Add(m.At.Sub(a.sentAt))
+	p.nfr7 = append(p.nfr7, m.At.Sub(a.sentAt))
 	if m.Data["status"] == "duplicate" {
 		p.r.dups.Add(1)
 	} else {
@@ -483,7 +505,7 @@ func (p *player) result(m Message) {
 	p.counted[a.qid] = true
 	q := p.questions[a.qid]
 	received := num(m.Data["receivedAt"])
-	if received >= q.closeAt { // acceptance is received < closeAt (TRD §3.4), even with no worker to close the question
+	if acceptedLate(received, q.closeAt) { // enforced by the script even with no worker to close the question
 		p.r.note(&p.r.notes, fmt.Sprintf("%s %s: accepted at %d, after closeAt %d", p.id, a.qid, received, q.closeAt))
 	}
 	want := ExpectedPoints(p.r.keys[a.qid] == a.option, q.openedAt, q.deadline, received)
@@ -491,9 +513,7 @@ func (p *player) result(m Message) {
 		p.r.note(&p.r.points, fmt.Sprintf("%s %s: server %d, expected %d", p.id, a.qid, got, want))
 	}
 	p.expected += want
-	p.r.mu.Lock()
-	p.r.nfr6 = append(p.r.nfr6, time.UnixMilli(received))
-	p.r.mu.Unlock()
+	p.accepted = append(p.accepted, time.UnixMilli(received))
 }
 
 // finish marks the quiz over for this player and hangs up. Holds p.mu.
@@ -561,3 +581,7 @@ func leaderboardLatencies(accepted []time.Time, arrivals map[int64][]time.Time) 
 	}
 	return out
 }
+
+// acceptedLate reports an accepted answer received after its question closed. Equality is allowed: the
+// answer that closes a question early is accepted, then close_at moves to its own receive time.
+func acceptedLate(received, closeAt int64) bool { return received > closeAt }

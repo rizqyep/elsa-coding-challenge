@@ -44,3 +44,16 @@ func TestChooseOption_FollowsTheRatios(t *testing.T) {
 		t.Errorf("none %d, right %d, wrong %d of 10000; want about 10%%, 63%%, 27%%", none, right, wrong)
 	}
 }
+
+// An answer may be received exactly at closeAt when it is the one that closes the question early:
+// the script accepts it, then moves close_at to that same millisecond (answer.lua, TRD §4.4).
+func TestAcceptedLate(t *testing.T) {
+	for _, c := range []struct {
+		received, closeAt int64
+		late              bool
+	}{{999, 1000, false}, {1000, 1000, false}, {1001, 1000, true}} {
+		if got := acceptedLate(c.received, c.closeAt); got != c.late {
+			t.Errorf("acceptedLate(%d, %d) = %v, want %v", c.received, c.closeAt, got, c.late)
+		}
+	}
+}

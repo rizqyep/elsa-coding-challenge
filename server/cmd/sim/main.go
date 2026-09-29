@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,22 +23,43 @@ import (
 
 func main() {
 	base := flag.String("base", "http://localhost:8080", "stack URL (nginx)")
+	origin := flag.String("origin", "", "Origin header for WebSockets when -base isn't an allowed origin (e.g. nginx's container IP)")
 	dsn := flag.String("dsn", "postgres://quiz:quiz-local-only@localhost:15432/quiz?sslmode=disable", "PostgreSQL, for answer keys and archived results")
-	out := flag.String("out", "../loadtest/results", "directory for the JSON report")
+	out := flag.String("out", "", "directory for the JSON report (default: results/ beside the scenarios directory)")
 	timeout := flag.Duration("timeout", 20*time.Minute, "give up after this long")
+	cpuProfile := flag.String("cpuprofile", "", "write the simulator's own CPU profile here")
+	mutexProfile := flag.String("mutexprofile", "", "write the simulator's lock-contention profile here")
 	flag.Parse()
+	if *mutexProfile != "" {
+		runtime.SetMutexProfileFraction(5)
+		defer writeProfile("mutex", *mutexProfile)
+	}
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err == nil && pprof.StartCPUProfile(f) == nil {
+			defer pprof.StopCPUProfile()
+		}
+	}
 	if flag.NArg() < 1 {
 		fmt.Fprintln(os.Stderr, "usage: sim [flags] <scenario.yaml> [key=value ...]")
 		os.Exit(2)
 	}
-	code, err := run(*base, *dsn, *out, *timeout, flag.Arg(0), flag.Args()[1:])
+	dir := *out
+	if dir == "" { // loadtest/scenarios/x.yaml → loadtest/results, whatever the working directory
+		dir = filepath.Join(filepath.Dir(flag.Arg(0)), "..", "results")
+	}
+	code, err := run(*base, *origin, *dsn, dir, *timeout, flag.Arg(0), flag.Args()[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "sim:", err)
+	}
+	pprof.StopCPUProfile()
+	if *mutexProfile != "" {
+		writeProfile("mutex", *mutexProfile)
 	}
 	os.Exit(code)
 }
 
-func run(base, dsn, outDir string, timeout time.Duration, path string, overrides []string) (int, error) {
+func run(base, origin, dsn, outDir string, timeout time.Duration, path string, overrides []string) (int, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return 2, err
@@ -61,6 +83,9 @@ func run(base, dsn, outDir string, timeout time.Duration, path string, overrides
 	}
 	defer env.Close()
 	defer restore(env)
+	if origin != "" {
+		env.Origin = origin
+	}
 	before := reconciliation(ctx, env)
 
 	fmt.Printf("%s: %d room(s) × %d participants, set %s, window %v, reveal %v, %d chaos step(s)\n",
@@ -83,7 +108,8 @@ func run(base, dsn, outDir string, timeout time.Duration, path string, overrides
 	for i := range sc.Rooms {
 		spec := testkit.RoomSpec{QuestionSet: sc.QuestionSet, Participants: sc.ParticipantsPerRoom, JoinRamp: sc.JoinRampUp,
 			Window: sc.Window, Reveal: sc.Reveal, AnswerWithin: sc.Answers.Within, CorrectRatio: sc.Answers.CorrectRatio,
-			NoAnswerRatio: sc.Answers.NoAnswerRatio, SlowRatio: sc.SlowClients, Seed: sc.Seed + uint64(i), Live: live}
+			NoAnswerRatio: sc.Answers.NoAnswerRatio, SlowRatio: sc.SlowClients, Seed: sc.Seed + uint64(i), Live: live,
+			ValidateEvery: validateEvery}
 		var steps []testkit.Step
 		if i == 0 { // faults are anchored to the first room's questions
 			for _, c := range sc.Chaos {
@@ -138,6 +164,17 @@ func run(base, dsn, outDir string, timeout time.Duration, path string, overrides
 	}
 	return 0, nil
 }
+
+func writeProfile(name, path string) {
+	if f, err := os.Create(path); err == nil {
+		_ = pprof.Lookup(name).WriteTo(f, 0)
+		_ = f.Close()
+	}
+}
+
+// validateEvery samples schema validation in the simulator: every client checks the first message of each
+// type, then every 100th. Checking all of them made the load generator the bottleneck (task-29).
+const validateEvery = 100
 
 // chaosDo turns a scenario action into a step (TRD §11.5).
 func chaosDo(env *testkit.Compose, a Action) func(context.Context) error {
@@ -218,7 +255,7 @@ func writeReport(ctx context.Context, env *testkit.Compose, dir string, sc *Scen
 			"window": sc.Window.String(), "reveal": sc.Reveal.String(), "joinRampUp": sc.JoinRampUp.String(), "roomStagger": sc.RoomStagger.String(),
 			"answerWithin": sc.Answers.Within.String(), "correctRatio": sc.Answers.CorrectRatio, "noAnswerRatio": sc.Answers.NoAnswerRatio,
 			"slowClients": sc.SlowClients, "chaos": chaosText(sc), "seed": sc.Seed},
-		"machine": machine(), "stack": map[string]any{"gateways": len(gateways), "workers": len(workers)},
+		"machine": machine(), "stack": map[string]any{"gateways": len(gateways), "workers": len(workers), "baseURL": env.BaseURL},
 		"results": map[string]any{"participants": a.Participants, "joined": a.Joined, "finished": a.Finished,
 			"answersSent": a.AnswersSent, "accepted": a.Accepted, "duplicates": a.Duplicates, "reconnects": a.Reconnects, "stale": a.Stale,
 			"errors": a.Errors, "closes": a.Closes, "nfr6": ms(a.NFR6), "nfr7": ms(a.NFR7), "nfr8": ms(a.NFR8), "nfr9": ms(a.NFR9),

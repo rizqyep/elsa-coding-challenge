@@ -41,6 +41,7 @@ type Client struct {
 	stateV     int64
 	lbV        int64
 	seen       map[int64]string // state version → the event that carried it
+	perType    map[string]int   // messages received per type, for sampled validation
 	closeCode  int
 	done       chan struct{}
 }
@@ -50,7 +51,10 @@ type DialOptions struct {
 	Origin    string
 	OnMessage func(Message) // run on the read goroutine after each message is recorded
 	ReadDelay time.Duration // pause before each read, to act as a slow reader
-	NoLog     bool          // keep counters only; WaitFor and Messages see nothing (for large simulations)
+	NoLog     bool          // keep counters only; WaitFor and Messages see nothing, and leaderboards decode only their version (large simulations)
+	// ValidateEvery > 0 checks the first message of each type, then every Nth, instead of all of them:
+	// full validation of every message made the simulator, not the stack, the bottleneck (task-29).
+	ValidateEvery int
 }
 
 // Dial connects with token, retrying 503s after their Retry-After until ctx ends (TRD §7.1).
@@ -71,7 +75,7 @@ func DialWith(ctx context.Context, wsURL, token string, o DialOptions) (*Client,
 			_ = resp.Body.Close()
 		}
 		if err == nil {
-			c := &Client{conn: conn, opts: o, seen: map[int64]string{}, done: make(chan struct{})}
+			c := &Client{conn: conn, opts: o, seen: map[int64]string{}, perType: map[string]int{}, done: make(chan struct{})}
 			c.cond = sync.NewCond(&c.mu)
 			go c.read()
 			return c, nil
@@ -202,13 +206,24 @@ func (c *Client) read() {
 		}
 		m := Message{At: time.Now(), Raw: b}
 		var env struct {
-			Type string         `json:"type"`
-			ID   string         `json:"id"`
-			Data map[string]any `json:"data"`
+			Type string          `json:"type"`
+			ID   string          `json:"id"`
+			Data json.RawMessage `json:"data"`
 		}
-		verr := protocol.ValidateServer(b)
 		if err := json.Unmarshal(b, &env); err == nil {
-			m.Type, m.ID, m.Data = env.Type, env.ID, env.Data
+			m.Type, m.ID = env.Type, env.ID
+			if c.opts.NoLog && env.Type == "leaderboard" { // the most frequent message; only its version is used
+				var lb struct{ Version float64 }
+				_ = json.Unmarshal(env.Data, &lb)
+				m.Data = map[string]any{"version": lb.Version}
+			} else {
+				_ = json.Unmarshal(env.Data, &m.Data)
+			}
+		}
+		c.perType[m.Type]++ // read goroutine only
+		var verr error
+		if n := c.perType[m.Type]; c.opts.ValidateEvery <= 0 || n == 1 || n%c.opts.ValidateEvery == 0 {
+			verr = protocol.ValidateServer(b)
 		}
 		c.mu.Lock()
 		if verr != nil {
