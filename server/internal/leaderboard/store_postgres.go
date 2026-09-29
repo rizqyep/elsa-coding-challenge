@@ -51,3 +51,44 @@ func (s *PostgresStore) FinalPage(ctx context.Context, code quiz.Code, offset, l
 	}
 	return p, nil
 }
+
+// Final is an archived quiz as a late join or watch sees it (FR-13).
+type Final struct {
+	Status           quiz.Status
+	HostID           quiz.ParticipantID
+	QuestionCount    int
+	ParticipantCount int
+	Top              []Entry
+	You              *Entry // the caller's own result; nil if they didn't take part
+}
+
+// Final reads an archived quiz's top and, if participantID took part, their own result.
+func (s *PostgresStore) Final(ctx context.Context, code quiz.Code, participantID quiz.ParticipantID) (Final, error) {
+	page, err := s.FinalPage(ctx, code, 0, TopN)
+	if err != nil {
+		return Final{}, err
+	}
+	f := Final{Status: page.Status, ParticipantCount: page.ParticipantCount, Top: page.Entries}
+	err = s.pool.QueryRow(ctx, `
+		SELECT q.host_id, (SELECT count(*) FROM questions WHERE set_id = q.question_set_id)
+		FROM quizzes q WHERE q.code = $1`, string(code)).Scan(&f.HostID, &f.QuestionCount)
+	if err != nil {
+		return Final{}, fmt.Errorf("final: %w", err)
+	}
+	if participantID == "" {
+		return f, nil
+	}
+	var you Entry
+	err = s.pool.QueryRow(ctx, `
+		SELECT rank, participant_id, display_name, total_score FROM quiz_results
+		WHERE quiz_code = $1 AND participant_id = $2`, string(code), string(participantID)).
+		Scan(&you.Rank, &you.ParticipantID, &you.DisplayName, &you.Score)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return Final{}, fmt.Errorf("final: %w", err)
+	default:
+		f.You = &you
+	}
+	return f, nil
+}
