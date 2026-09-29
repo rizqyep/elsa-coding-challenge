@@ -140,8 +140,8 @@ func TestEarlyClose(t *testing.T) {
 				t.Fatalf("closes = %v, want %v", closes, tc.closes)
 			}
 			want := tc.room
-			if tc.closes {
-				want.CloseAt, want.NextTransitionAt = tc.now, tc.now
+			if tc.closes { // a new version, so gateways and clients don't drop the moved close time (FR-28)
+				want.CloseAt, want.NextTransitionAt, want.StateVersion = tc.now, tc.now, tc.room.StateVersion+1
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("room =\n  %+v\nwant\n  %+v", got, want)

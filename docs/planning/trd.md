@@ -424,7 +424,7 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
   5. stored answer exists → `{duplicate, option, correct, points, received_ms, current_total}`
   6. `points` per §3.4 using `deadline`, `opened_at`, `window_ms`
   7. `HSET ans:{qid} id "option|correct|points|now"` (set TTL on first write), `ZINCRBY lb points id`, `SADD sched:lbdirty code`
-  8. **Early close:** if `HLEN ans:{qid} ≥ ZCOUNT online (now − online_window) +inf` and that count > 0, set `close_at = next_at = now`, `ZADD sched:transitions now code`, and publish a `state` event
+  8. **Early close:** if `HLEN ans:{qid} ≥ ZCOUNT online (now − online_window) +inf` and that count > 0, set `close_at = next_at = now`, `HINCRBY state_ver 1`, `ZADD sched:transitions now code`, and publish a `state` event with the new version. Without the new version, gateways and clients (FR-28) would drop the moved close time as stale
 - **Returns:** `{accepted, correct, points, total, received_ms}`
 - **Arithmetic:** Lua numbers are doubles. `math.floor(100 * remaining / window)` is exact for our ranges (both ≤ 120,000 ms), and the shared test vectors (§3.5) include the boundary cases.
 - **`WAIT` (non-functional §3.2):** when `REDIS_WAIT_REPLICAS > 0`, the gateway sends `WAIT n timeout` **in the same pipeline** as the `EVALSHA`. `WAIT` only counts writes made on its own connection, and with a connection pool, a separate call could land on a different connection and confirm nothing.

@@ -134,5 +134,6 @@ func EarlyClose(r Room, answered, online int, now int64) (Room, bool) {
 		return r, false
 	}
 	r.CloseAt, r.NextTransitionAt = now, now
+	r.StateVersion++ // otherwise the moved close time looks stale to gateways and clients (FR-28)
 	return r, true
 }

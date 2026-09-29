@@ -243,11 +243,15 @@ func TestRecordAnswer_EarlyCloseWhenEveryoneOnlineAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	before := roomField(t, "state_ver")
 	if _, err := r.repo.RecordAnswer(ctx, answer("u_1", "dq-01-b", true)); err != nil {
 		t.Fatal(err)
 	}
 	if got := roomField(t, "close_at"); got != r.closeAt {
 		t.Fatalf("closed early after 1 of 2 answers (close_at %d)", got)
+	}
+	if got := roomField(t, "state_ver"); got != before {
+		t.Fatalf("state_ver moved to %d on an answer that didn't close anything", got)
 	}
 	last, err := r.repo.RecordAnswer(ctx, answer("u_2", "dq-01-a", false))
 	if err != nil {
@@ -276,12 +280,17 @@ func TestRecordAnswer_EarlyCloseWhenEveryoneOnlineAnswered(t *testing.T) {
 		C int64  `json:"c"`
 		D int64  `json:"d"`
 		X int64  `json:"x"`
+		V int64  `json:"v"`
 	}
 	if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
 		t.Fatalf("event %q: %v", msg.Payload, err)
 	}
 	if ev.T != "state" || ev.S != "question_open" || ev.Q != "dq-01" || ev.C != last.ReceivedAt || ev.D != r.deadline || ev.X != last.ReceivedAt {
 		t.Errorf("event %+v", ev)
+	}
+	// A newer version, or gateways and clients drop the moved close time as stale (FR-28).
+	if got := roomField(t, "state_ver"); got != before+1 || ev.V != before+1 {
+		t.Errorf("state_ver %d, event v %d; want both %d", got, ev.V, before+1)
 	}
 }
 

@@ -22,12 +22,13 @@ if redis.call('TTL', KEYS[2]) < 0 then redis.call('EXPIRE', KEYS[2], ARGV[7]) en
 local total = tonumber(redis.call('ZINCRBY', KEYS[3], p, id))
 redis.call('SADD', KEYS[6], ARGV[1])
 
--- Early close (FR-5): same condition as quiz.EarlyClose; only close_at/next_at move.
+-- Early close (FR-5): same as quiz.EarlyClose; close_at/next_at move and the state version goes up.
 local online = redis.call('ZCOUNT', KEYS[5], now - tonumber(ARGV[6]), '+inf')
 if online > 0 and redis.call('HLEN', KEYS[2]) >= online then
   redis.call('HSET', KEYS[1], 'close_at', now, 'next_at', now)
+  local ver = redis.call('HINCRBY', KEYS[1], 'state_ver', 1)
   redis.call('ZADD', KEYS[7], now, ARGV[1])
-  redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'state', v = tonumber(r[6]), s = 'question_open',
+  redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'state', v = ver, s = 'question_open',
     i = tonumber(r[7]), n = tonumber(r[8]), q = r[2], o = tonumber(r[4]), d = tonumber(r[5]), c = now, x = now}))
 end
 return {'accepted', ARGV[4], correct and 1 or 0, p, total, now}
