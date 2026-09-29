@@ -159,7 +159,7 @@ func migrate(ctx context.Context, dsn string) error {
 	return nil
 }
 
-// Reset clears Redis and removes every injected fault. Call it at the start of each test.
+// Reset clears Redis and the quiz tables (question sets stay seeded) and removes every injected fault. Call it at the start of each test.
 func (e *Env) Reset(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
@@ -168,6 +168,9 @@ func (e *Env) Reset(t *testing.T) {
 	}
 	if err := e.Toxiproxy.ResetState(); err != nil {
 		t.Fatalf("reset toxiproxy: %v", err)
+	}
+	if _, err := e.Postgres.Exec(ctx, "TRUNCATE answers, quiz_results, quizzes"); err != nil {
+		t.Fatalf("truncate postgres: %v", err)
 	}
 }
 

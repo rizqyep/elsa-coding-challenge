@@ -33,9 +33,6 @@ func reset(t *testing.T) (*history.RedisLiveStore, *history.PostgresStore) {
 	t.Helper()
 	env.Reset(t)
 	ctx := context.Background()
-	if _, err := env.Postgres.Exec(ctx, "TRUNCATE answers, quiz_results, quizzes"); err != nil {
-		t.Fatal(err)
-	}
 	all := append(append(append(quiz.Scripts(), session.Scripts()...), scoring.Scripts()...), history.Scripts()...)
 	if err := redisx.LoadScripts(ctx, env.Redis, all...); err != nil {
 		t.Fatal(err)
@@ -49,7 +46,7 @@ func playQuestion(t *testing.T, answers map[string]bool) history.Job {
 	t.Helper()
 	ctx := context.Background()
 	qr := quiz.NewRedisRepository(env.Redis)
-	if err := qr.CreateRoom(ctx, quiz.CreateRoomInput{Code: code, QuestionSetID: "demo-quick", HostID: "host_1",
+	if _, err := qr.CreateRoom(ctx, quiz.CreateRoomInput{Code: code, QuestionSetID: "demo-quick", HostID: "host_1",
 		QuestionIDs: []quiz.QuestionID{"dq-01"}, WindowMs: 15_000, RevealMs: 5_000, LobbyTimeoutMs: 60_000, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}

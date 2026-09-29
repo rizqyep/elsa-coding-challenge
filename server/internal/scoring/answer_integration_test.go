@@ -59,7 +59,7 @@ func openRoom(t *testing.T, participants ...string) room {
 	if err := redisx.LoadScripts(ctx, env.Redis, all...); err != nil {
 		t.Fatal(err)
 	}
-	if err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
+	if _, err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
 		Code: code, QuestionSetID: "demo-quick", HostID: "host_1",
 		QuestionIDs: []quiz.QuestionID{"dq-01", "dq-02"}, WindowMs: 15_000, RevealMs: 5_000, LobbyTimeoutMs: 60_000, TTL: time.Hour,
 	}); err != nil {

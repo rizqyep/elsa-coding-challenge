@@ -45,10 +45,10 @@ func NewRedisRepository(rdb redis.UniversalClient) *RedisRepository {
 	return &RedisRepository{rdb: rdb}
 }
 
-// CreateRoom creates the room in the lobby and schedules its expiry.
-func (r *RedisRepository) CreateRoom(ctx context.Context, in CreateRoomInput) error {
+// CreateRoom creates the room in the lobby, schedules its expiry, and returns its Redis creation time (epoch ms).
+func (r *RedisRepository) CreateRoom(ctx context.Context, in CreateRoomInput) (int64, error) {
 	if len(in.QuestionIDs) == 0 {
-		return errors.New("create room: no questions")
+		return 0, errors.New("create room: no questions")
 	}
 	c := string(in.Code)
 	args := []any{c, string(in.QuestionSetID), string(in.HostID), in.WindowMs, in.RevealMs, in.LobbyTimeoutMs, int64(in.TTL.Seconds())}
@@ -57,9 +57,16 @@ func (r *RedisRepository) CreateRoom(ctx context.Context, in CreateRoomInput) er
 	}
 	reply, err := createRoomScript.Run(ctx, r.rdb, []string{redisx.RoomKey(c), redisx.QuestionIDsKey(c), redisx.SchedTransitions}, args...).Slice()
 	if err != nil {
-		return fmt.Errorf("create_room: %w", err)
+		return 0, fmt.Errorf("create_room: %w", err)
 	}
-	return outcome(reply, map[string]error{"code_in_use": ErrCodeInUse})
+	if err := outcome(reply, map[string]error{"code_in_use": ErrCodeInUse}); err != nil {
+		return 0, err
+	}
+	createdAt, ok := reply[1].(int64)
+	if !ok {
+		return 0, fmt.Errorf("create_room: unexpected reply %v", reply)
+	}
+	return createdAt, nil
 }
 
 // Start records the host's start request (FR-3).
@@ -81,6 +88,25 @@ func (r *RedisRepository) Room(ctx context.Context, code Code) (RoomRecord, erro
 		return RoomRecord{}, fmt.Errorf("read room: %w", err)
 	}
 	return ParseRoomHash(code, h)
+}
+
+// Live reads the room record and participant count in one transaction.
+func (r *RedisRepository) Live(ctx context.Context, code Code) (LiveRoom, error) {
+	c := string(code)
+	var h *redis.MapStringStringCmd
+	var n *redis.IntCmd
+	if _, err := r.rdb.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		h = p.HGetAll(ctx, redisx.RoomKey(c))
+		n = p.ZCard(ctx, redisx.LeaderboardKey(c))
+		return nil
+	}); err != nil {
+		return LiveRoom{}, fmt.Errorf("read live room: %w", err)
+	}
+	rec, err := ParseRoomHash(code, h.Val())
+	if err != nil {
+		return LiveRoom{}, err
+	}
+	return LiveRoom{RoomRecord: rec, Participants: int(n.Val())}, nil
 }
 
 // DueTransitions returns rooms whose next transition is due by now (epoch ms).

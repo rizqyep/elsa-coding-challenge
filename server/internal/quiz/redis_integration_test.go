@@ -49,12 +49,27 @@ func TestCreateRoom_WritesTheRoom(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
 	before := redisNow(t)
-	if err := repo.CreateRoom(ctx, input); err != nil {
+	createdAt, err := repo.CreateRoom(ctx, input)
+	if err != nil {
 		t.Fatal(err)
 	}
 	rec, err := repo.Room(ctx, input.Code)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if createdAt != rec.CreatedAt {
+		t.Errorf("CreateRoom returned %d, room created_at %d", createdAt, rec.CreatedAt)
+	}
+	live, err := repo.Live(ctx, input.Code)
+	if err != nil || live.RoomRecord != rec || live.Participants != 0 {
+		t.Errorf("Live = %+v, %v; want the same record with 0 participants", live, err)
+	}
+	env.Redis.ZAdd(ctx, redisx.LeaderboardKey(string(input.Code)), redisZ("u_1"), redisZ("u_2"))
+	if live, _ := repo.Live(ctx, input.Code); live.Participants != 2 {
+		t.Errorf("Live participants = %d, want 2", live.Participants)
+	}
+	if _, err := repo.Live(ctx, "ZZZZZZ"); !errors.Is(err, quiz.ErrUnknownQuiz) {
+		t.Errorf("Live of a missing room: %v, want ErrUnknownQuiz", err)
 	}
 	if rec.CreatedAt < before || rec.CreatedAt > before+5_000 {
 		t.Errorf("created_at %d not close to Redis time %d", rec.CreatedAt, before)
@@ -88,10 +103,10 @@ func TestCreateRoom_WritesTheRoom(t *testing.T) {
 func TestCreateRoom_CodeInUse(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
-	if err := repo.CreateRoom(ctx, input); err != nil {
+	if _, err := repo.CreateRoom(ctx, input); err != nil {
 		t.Fatal(err)
 	}
-	if err := repo.CreateRoom(ctx, input); !errors.Is(err, quiz.ErrCodeInUse) {
+	if _, err := repo.CreateRoom(ctx, input); !errors.Is(err, quiz.ErrCodeInUse) {
 		t.Errorf("got %v, want ErrCodeInUse", err)
 	}
 }
@@ -126,7 +141,7 @@ func TestStart_MatchesDomainRules(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := newRepo(t)
 			ctx := context.Background()
-			if err := repo.CreateRoom(ctx, input); err != nil {
+			if _, err := repo.CreateRoom(ctx, input); err != nil {
 				t.Fatal(err)
 			}
 			key := redisx.RoomKey(string(input.Code))

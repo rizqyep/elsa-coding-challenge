@@ -35,7 +35,7 @@ func setup(t *testing.T) *session.RedisRepository {
 	if err := redisx.LoadScripts(ctx, env.Redis, scripts...); err != nil {
 		t.Fatal(err)
 	}
-	err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
+	_, err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
 		Code: code, QuestionSetID: "demo-quick", HostID: "host_1",
 		QuestionIDs: []quiz.QuestionID{"dq-01", "dq-02", "dq-03"},
 		WindowMs:    10_000, RevealMs: 3_000, LobbyTimeoutMs: 1_800_000, TTL: time.Hour,

@@ -70,7 +70,7 @@ func started(t *testing.T, participants ...string) *quiz.RedisRepository {
 	ctx := context.Background()
 	in := input
 	in.QuestionIDs = []quiz.QuestionID{"dq-01", "dq-02"}
-	if err := repo.CreateRoom(ctx, in); err != nil {
+	if _, err := repo.CreateRoom(ctx, in); err != nil {
 		t.Fatal(err)
 	}
 	k := string(in.Code)
@@ -148,7 +148,7 @@ func TestTransition_OpensTheFirstQuestionAndAnnouncesIt(t *testing.T) {
 func TestTransition_NotDueRepairsTheSchedule(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
-	if err := repo.CreateRoom(ctx, input); err != nil {
+	if _, err := repo.CreateRoom(ctx, input); err != nil {
 		t.Fatal(err)
 	}
 	env.Redis.ZRem(ctx, redisx.SchedTransitions, string(input.Code))
@@ -237,7 +237,7 @@ func TestTransition_FinishPublishesFinalStandingsAndQueuesResults(t *testing.T) 
 func TestTransition_LobbyExpiry(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
-	if err := repo.CreateRoom(ctx, input); err != nil {
+	if _, err := repo.CreateRoom(ctx, input); err != nil {
 		t.Fatal(err)
 	}
 	now := env.Redis.Time(ctx).Val().UnixMilli()
@@ -567,7 +567,7 @@ func TestTransition_RoomsAreIndependent(t *testing.T) {
 	ctx := context.Background()
 	other := input
 	other.Code = "ABCDEF"
-	if err := repo.CreateRoom(ctx, other); err != nil {
+	if _, err := repo.CreateRoom(ctx, other); err != nil {
 		t.Fatal(err)
 	}
 	otherBefore, _ := repo.Room(ctx, other.Code)

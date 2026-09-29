@@ -35,7 +35,7 @@ func setup(t *testing.T, scores map[string]int) *leaderboard.RedisRepository {
 	if err := redisx.LoadScripts(ctx, env.Redis, all...); err != nil {
 		t.Fatal(err)
 	}
-	if err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
+	if _, err := quiz.NewRedisRepository(env.Redis).CreateRoom(ctx, quiz.CreateRoomInput{
 		Code: code, QuestionSetID: "demo-quick", HostID: "host_1", QuestionIDs: []quiz.QuestionID{"dq-01"},
 		WindowMs: 10_000, RevealMs: 3_000, LobbyTimeoutMs: 60_000, TTL: time.Hour,
 	}); err != nil {
