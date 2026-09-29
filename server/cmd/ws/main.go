@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"sync"
@@ -171,6 +172,10 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	})
 	mux.Handle("GET /readyz", ready.Handler())
 	mux.Handle("GET /metrics", metrics.Handler(reg))
+	if cfg.AppEnv == "local" { // profiles for the load runs; the port isn't published outside the stack
+		mux.HandleFunc("GET /debug/pprof/", pprof.Index)
+		mux.HandleFunc("GET /debug/pprof/profile", pprof.Profile)
+	}
 	return &gateway{handler: mux, ws: ws, ready: ready, sub: sub, hub: hub, sessions: sessions, clock: clock, presence: cfg.PresenceRefresh, log: log}, nil
 }
 

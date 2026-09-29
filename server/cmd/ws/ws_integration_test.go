@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -402,4 +403,22 @@ func errorsTotal(t *testing.T, reg *prometheus.Registry, code string) float64 {
 		}
 	}
 	return 0
+}
+
+// Locally the gateway serves pprof on its internal port, for the load runs' profiles (task-29).
+func TestPprof_LocalOnly(t *testing.T) {
+	setup(t)
+	gw := startGateway(t)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gw.http+"/debug/pprof/heap", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("/debug/pprof/heap: %d, want 200 with APP_ENV=local", resp.StatusCode)
+	}
 }
