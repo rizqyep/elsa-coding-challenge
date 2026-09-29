@@ -388,3 +388,25 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - Tests written first and confirmed red.
   - All passed on the first run, so **four mutation checks** confirmed each safety net can fail: a `quiz.Question` reference in the protocol package; `top: null` for empty lists; skipping schema validation; a dropped error code. All four were caught by their intended tests, and all files were verified restored byte-for-byte.
   - `make check` green.
+
+### AI-022: Integration harness and the first Redis scripts (task-10, task-11)
+
+- **Date / phase:** 2026-09-29 · P2 Redis scripts
+- **My input:**
+  - Agreed with strict validation on both sides (runtime schema validation, strict inbound / lenient outbound). My reason: it's worse if a message gets dropped or silently ignored because of a schema mismatch; validation everywhere makes problems traceable.
+  - "Let's go with P2".
+- **What the AI produced:**
+  - `testenv`: real Redis, PostgreSQL (migrated and seeded), and Toxiproxy per test package.
+  - `migrations.Apply`, shared by `cmd/migrate` and the tests.
+  - The `create_room`, `start`, and `join` Lua scripts with Go repositories, `quiz.RoomRecord`, and `leaderboard.Entry`.
+- **Catches:**
+  - **The AI broke one of its own test assertions and fixed it before running.** A schedule check in the start test zeroed a value before using it, so it could never fail meaningfully. Rewritten to capture the value first.
+  - **The AI caused a 10-minute hang.** Its concurrent-join test sent from 1,020 goroutines into a channel buffered for 1,000, and was only drained after `wg.Wait()`, which never returned. The AI read the partial output, found the cause, and fixed it (0.14 s now). It confirmed the killed run's containers were reaped, and lowered the integration timeout to 5 minutes so any future hang surfaces faster.
+  - **Parity with approved Go code over the TRD sketch:** TRD §4.4 had `start` check "not in lobby" before "not host", while the approved `quiz.Start` checks the host first. The script follows the Go rules, a test runs identical cases through both, and the TRD was corrected.
+  - A mutation first aimed at the wrong target proved nothing; the AI kept every mutation behavioural and compiling.
+- **Verification:**
+  - **Toxiproxy smoke test:** latency and outages verifiably reach the client. Mutation: latency on the wrong proxy made the test fail.
+  - **Script loader:** `EVALSHA` fails after `SCRIPT FLUSH`, which is why scripts must be loaded at startup for pipelines.
+  - Seed checks ported from task-04.
+  - **Lua mutations:** `ZADD` without `NX` → a rejoin reset the score, caught; swapped `start` checks → parity test fails.
+  - `make test-integration` and `make check` green.
