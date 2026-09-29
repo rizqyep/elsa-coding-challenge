@@ -156,7 +156,7 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - The AI had planned separate ADR files. On review they would have duplicated the decision records already in `context.md` (D1–D12, each with options and rationale). The system design links to those instead.
   - A limitation found during the failure analysis: while PostgreSQL is down, a gateway that has never cached a question set can't accept joins for it. This is documented rather than hidden.
 - **Verification:**
-  - **The capacity numbers are estimates** from typical per-operation costs. They are labelled that way in the document, and the load test and room simulator (T017) must replace them with measured values.
+  - **The capacity numbers are estimates** from typical per-operation costs. They are labelled that way in the document, and the load test and room simulator (task-28, task-29) must replace them with measured values.
   - Library capabilities the design relies on (gorilla's `PreparedMessage` and write buffer pool, go-redis script handling) are stated from the AI's knowledge and **must be confirmed against the library docs** when implementation starts.
   - I reviewed both documents before closing the design phase.
 - **Follow-up decisions:**
@@ -249,3 +249,36 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - A script then checked that **all 33 must-have FRs** appear in the table. None are missing.
   - The nginx behaviour for picking up scaled instances (re-resolving service names) is marked "to be confirmed when the config is written" rather than asserted.
 - **Verification:** links checked; the FR coverage check above; the port-exhaustion figure (≈ 28,000 connections per source address) matches the default Linux ephemeral port range (32768–60999).
+
+### AI-015: Task catalogue from the TRD
+
+- **Date / phase:** 2026-09-29 · planning
+- **Task type:** implementation planning
+- **What I asked:** update the task catalogue so it implements what we planned in the requirements and the TRD, and delete the old pre-TRD task files.
+- **What the AI produced:** [`tasks.md`](../planning/tasks.md) with 32 tasks in 7 phases. Each has the TRD sections and requirement IDs it implements, its dependencies, a size, its TDD status with "tests first" listed, and "done when" criteria. The old `tasks/T001–T020` files were deleted.
+- **How the catalogue encodes our process:**
+  - TDD tasks list their tests first, and the working steps require my review of those tests before any implementation (D14).
+  - The shared Go/Lua test vectors link domain tasks to script tasks: T07 → T12 and T08 → T13 run the same files.
+  - The load-run task must replace the capacity **estimates** in `non-functional.md` with measured values.
+- **Verification (script-checked):**
+  - The dependency graph is **generated from each task's "Depends on" line**, not drawn by hand, so the diagram and the text can't disagree. The first hand-drawn version was missing several edges (e.g. T02 → T15, T13 → T19), which is why it was replaced.
+  - The graph is acyclic (32 tasks).
+  - Every must-have FR is implemented by at least one task.
+  - Every TRD section 1–11 is covered.
+  - The graph renders with `mermaid-cli`.
+
+### AI-016: One file per task, grouped by phase
+
+- **Date / phase:** 2026-09-29 · planning
+- **Task type:** planning structure
+- **What I asked:** make the tasks more granular by cataloguing them in folders, with one entry per task (`task-01` … `task-n`).
+- **What the AI produced:**
+  - `docs/planning/tasks/<phase>/task-NN-<slug>.md` for all 32 tasks. Each file has: phase, size, TDD, status, implements, depends on / unblocks (linked), tests first, **granular steps** (4–8 checkable steps each), done when, and sections for notes, verification, and AI collaboration.
+  - `tasks.md` is now the index: working rules, the dependency graph, the board, the folder list.
+- **How it was done:** the files were generated from the agreed catalogue by a script, so no agreed content was retyped by hand. The steps were written per task. Where a step touches something risky, it says so explicitly: seed vocabulary reviewed by hand, the nginx re-resolution confirmed rather than assumed, `WAIT` verified with a real replica.
+- **Catch:** the first generated pass carried old `T07`-style IDs inside copied text (e.g. "the same vectors as T07"). A follow-up scan found them, converted every reference to `task-NN`, and confirmed none remain.
+- **Verification (script-checked):**
+  - all 32 files have the required sections;
+  - the dependency graph in `tasks.md` matches the files' "Depends on" links exactly, and is acyclic;
+  - every must-have FR and every TRD section 1–11 is covered;
+  - no broken links; the graph renders.

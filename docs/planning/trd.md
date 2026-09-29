@@ -1,6 +1,6 @@
 # Technical requirements (TRD)
 
-Status: **sections 1–8 reviewed; 9–11 draft for review** · Last updated: 2026-09-28
+Status: **complete** (all sections reviewed) · Last updated: 2026-09-28
 
 How the Go backend is built. It implements the agreed [requirements](requirements.md) and the [system design](../system-design/README.md), and follows the decisions in [context](context.md) (D1–D16). It doesn't repeat the architecture; it adds what's needed to write the code.
 
