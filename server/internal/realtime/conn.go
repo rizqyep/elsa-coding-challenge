@@ -330,6 +330,28 @@ func (c *Conn) Reply(id string, t protocol.Type, payload any) bool {
 
 // ReplyError queues an error message; retryAfter > 0 sets retryAfterMs.
 func (c *Conn) ReplyError(id string, code protocol.ErrorCode, message string, retryAfter time.Duration) bool {
+	return c.replyError(id, code, message, retryAfter, nil)
+}
+
+// replyError counts and logs the error once, then queues it; cause is logged, never sent (TRD §9.6).
+func (c *Conn) replyError(id string, code protocol.ErrorCode, message string, retryAfter time.Duration, cause error) bool {
+	c.s.opts.OnError(code)
+	level := slog.LevelDebug
+	switch code {
+	case protocol.CodeInternal:
+		level = slog.LevelError
+	case protocol.CodeServerBusy:
+		level = slog.LevelWarn
+	}
+	attrs := []any{slog.String("code", string(code)), slog.String("conn_id", c.id),
+		slog.String("participant_id", c.claims.ParticipantID), slog.String("request_id", id)}
+	if m, ok := c.Member(); ok {
+		attrs = append(attrs, slog.String("quiz_code", string(m.Code)))
+	}
+	if cause != nil {
+		attrs = append(attrs, slog.Any("error", cause))
+	}
+	c.s.log.Log(c.ctx, level, "request failed", attrs...)
 	if r := []rune(message); len(r) > maxErrorMessage {
 		message = string(r[:maxErrorMessage])
 	}

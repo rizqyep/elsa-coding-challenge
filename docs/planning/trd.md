@@ -395,15 +395,21 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
 
 #### `join`
 
-- **KEYS:** `room`, `roster`, `lb`, `online`, `sched:lbdirty`
-- **ARGV:** code, participant_id, display_name, top_n, ttl_s
+- **KEYS:** `room`, `roster`, `lb`, `online`, `sched:lbdirty`, `room:{C}` channel
+- **ARGV:** code, participant_id, display_name, top_n, ttl_s, conn_id
 - **Steps:**
   1. No room → `{rejected, unknown_quiz}`. `expired` → `{rejected, quiz_expired}`.
   2. `finished` → `{finished}`; the gateway serves the final results (from Redis if still present, otherwise PostgreSQL).
   3. `HSET roster` (a rejoin may update the name), `ZADD lb NX id 0`, `ZADD online id now`, `SADD sched:lbdirty code`.
-  4. Return the snapshot.
+  4. If `conn_id` is set, `PUBLISH` `{t: kick, p, k: conn_id}`, so other gateways close this participant's older connections (FR-12) without an extra round trip.
+  5. Return the snapshot.
 - **Returns:** `{ok, room fields…, own_score, own_rank, participant_count, top N [id, name, score]…}`
-- After the script, the gateway reads `HGET ans:{q_id} id` to tell a rejoining participant whether they already answered the current question. It's read-only and informational, so it doesn't need to be atomic with the join.
+- After the script, only when a question is open or closed, the gateway reads the participant's standing for the current question (the `standings` read) to tell a rejoining participant whether they already answered it. It's read-only and informational, so it doesn't need to be atomic with the join, and a lobby join burst never pays for it. If it fails, the snapshot goes without it; a resend still returns the original result (FR-30).
+
+#### `presence`
+
+- **KEYS:** `room`, `online`. **ARGV:** participant IDs (at most 500 per call).
+- **Steps:** room gone (`PTTL ≤ 0`) → return 0, so a released room's online set is never recreated without an expiry. Otherwise `ZADD online <Redis TIME> id…` and `PEXPIRE online <room PTTL>`.
 
 #### `start`
 
@@ -709,6 +715,7 @@ The send queue is a buffered channel of `WS_SEND_QUEUE_SIZE` items. An item is e
 |---|---|
 | `join` | Validate code and name → ensure the question set is cached (single-flight, retry with backoff, §9) → **register in the registry and subscribe to the room first** → `join` script → `HGET` current answer → send `snapshot`. If this identity already has a local connection in the room, close the old one with 4000; also publish `kick` so other gateways do the same (FR-12) |
 | `watch` | Host role and `host_id` match → register as a watcher (no roster entry, no presence) → snapshot |
+| Both | A participant token can't `watch`; a host token can't `join` (the host doesn't play). One quiz per connection: a second `join`/`watch` → `already_joined`. A room this gateway already has skips the room lookup, so a join burst reads the room once per gateway. A failed join leaves the room, so the client can retry on the same connection. A finished quiz isn't joined: the reply is a read-only finished snapshot, from Redis while the room exists, then from the archived results (FR-13) |
 | `submit_answer` | Must be a joined participant → cached question: does `optionId` belong to `questionId`? (`invalid_option`) → `correct` from the cached answer key → `answer` script (+ `WAIT` in the same pipeline when enabled) → `answer_result` or `error`. A question not in the cached set → `wrong_question` without calling Redis |
 | `ping` | Reply `pong` with `TIME`-aligned server time (the gateway tracks its offset from Redis `TIME`, refreshed every 30 s) |
 
@@ -759,7 +766,9 @@ A non-blocking send that finds the queue full:
 
 ### 7.7 Presence
 
-Every `PRESENCE_REFRESH`, for each room with local participants, one small script call sets `ZADD online <Redis TIME> id…` for all of them. Using Redis time avoids clock skew between gateways and Redis in the early-close check. Presence is never removed on disconnect (§4.6).
+Every `PRESENCE_REFRESH`, for each room with local participants, one small script call sets `ZADD online <Redis TIME> id…` for all of them. Using Redis time avoids clock skew between gateways and Redis in the early-close check. Presence is never removed on disconnect (§4.6). Rooms of more than 500 local participants take one call per 500 (the `presence` script, §4.4). Watchers are skipped.
+
+**Server time for `pong`:** each gateway keeps its offset from Redis `TIME`, measured at the midpoint of the round trip and refreshed every 30 s; a failed refresh keeps the last offset. Countdowns built from `pong` then line up with the deadlines Redis stamped.
 
 ### 7.8 Question cache
 

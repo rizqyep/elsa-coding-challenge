@@ -302,56 +302,6 @@ type live struct {
 	hub     *realtime.Hub
 }
 
-// joiner handles join and watch the way the gateway's handler will (task-20): Enter first, then the snapshot.
-type joiner struct {
-	hub      *realtime.Hub
-	sessions *session.RedisRepository
-	quizzes  *quiz.RedisRepository
-	cache    *quiz.Cache
-}
-
-func (j *joiner) Handle(ctx context.Context, c *realtime.Conn, m protocol.ClientMessage) {
-	var code quiz.Code
-	switch p := m.Payload.(type) {
-	case protocol.Join:
-		code = quiz.Code(p.QuizCode)
-	case protocol.Watch:
-		code = quiz.Code(p.QuizCode)
-	default:
-		return
-	}
-	rec, err := j.quizzes.Room(ctx, code)
-	if err != nil {
-		c.ReplyError(m.ID, protocol.CodeUnknownQuiz, err.Error(), 0)
-		return
-	}
-	member := realtime.Member{Code: code, SetID: rec.QuestionSetID}
-	if p, ok := m.Payload.(protocol.Join); ok {
-		member.ParticipantID, member.DisplayName = quiz.ParticipantID(c.Claims().ParticipantID), p.DisplayName
-	}
-	if err := j.hub.Enter(ctx, c, member); err != nil {
-		c.ReplyError(m.ID, protocol.CodeServerBusy, err.Error(), time.Second)
-		return
-	}
-	if member.ParticipantID == "" {
-		frame, _ := j.hub.Snapshot(ctx, c)
-		c.SendBytes(frame)
-		return
-	}
-	res, err := j.sessions.Join(ctx, session.JoinInput{Code: code, ParticipantID: member.ParticipantID, DisplayName: member.DisplayName, TTL: time.Hour})
-	if err != nil {
-		c.ReplyError(m.ID, protocol.CodeServerBusy, err.Error(), time.Second)
-		return
-	}
-	set, _ := j.cache.Get(rec.QuestionSetID)
-	view := session.RoomView{Room: res.Room, ParticipantCount: res.ParticipantCount, Top: res.Top, ServerTime: res.ServerTime}
-	c.Reply(m.ID, protocol.TypeSnapshot, realtime.BuildSnapshot(view, set, member, session.Standing{Found: true, Score: res.Score, Rank: res.Rank}))
-}
-func (j *joiner) Snapshot(ctx context.Context, c *realtime.Conn) ([]byte, error) {
-	return j.hub.Snapshot(ctx, c)
-}
-func (j *joiner) Closed(c *realtime.Conn) { j.hub.Leave(c) }
-
 func startLive(t *testing.T) *live {
 	t.Helper()
 	tenv.Reset(t)
@@ -376,7 +326,9 @@ func startLive(t *testing.T) *live {
 	tokens := &auth.Tokens{Key: []byte(strings.Repeat("k", 32)), TTL: time.Hour}
 	gw := realtime.New(realtime.Options{MaxMessageBytes: 4096, SendQueueSize: 64, PingInterval: 25 * time.Second, PongTimeout: time.Minute,
 		RatePerSec: 50, RateBurst: 50, AdmissionPerSec: 1000, MaxConnections: 1000}, tokens,
-		&joiner{hub: hub, sessions: sessions, quizzes: quizzes, cache: cache}, nil)
+		realtime.NewMessageHandler(realtime.HandlerDeps{Hub: hub, Joiner: sessions, Rooms: quizzes,
+			Answers: scoring.NewService(scoring.NewRedisRepository(tenv.Redis, scoring.RedisOptions{OnlineWindow: 30 * time.Second, TTL: time.Hour}), time.Second),
+			Finals:  leaderboard.NewPostgresStore(tenv.Postgres), Clock: realtime.NewRedisClock(func(ctx context.Context) (time.Time, error) { return tenv.Redis.Time(ctx).Result() }), DataTTL: time.Hour}), nil)
 	srv := httptest.NewServer(gw)
 	t.Cleanup(srv.Close)
 	return &live{t: t, srv: srv, tokens: tokens, quizzes: quizzes, hub: hub}
@@ -557,6 +509,7 @@ func TestLive_SecondConnectionForTheSameParticipantReplacesTheFirst(t *testing.T
 		break
 	}
 }
+
 // Stopping must not wait out a blocked read; with the 15 s default it would stall every shutdown.
 func TestSubscriber_StopsPromptlyWithTheDefaultHealthInterval(t *testing.T) {
 	tenv.Reset(t)

@@ -280,20 +280,29 @@ func (h *Hub) Snapshot(ctx context.Context, c *Conn) ([]byte, error) {
 	if m == nil {
 		return nil, nil
 	}
-	v, err := h.view(ctx, m.Code)
+	snap, err := h.snapshotFor(ctx, *m)
 	if err != nil {
 		return nil, err
+	}
+	return protocol.Encode(protocol.TypeSnapshot, "", snap)
+}
+
+// snapshotFor builds a member's snapshot: the shared room read plus their own standing.
+func (h *Hub) snapshotFor(ctx context.Context, m Member) (protocol.Snapshot, error) {
+	v, err := h.view(ctx, m.Code)
+	if err != nil {
+		return protocol.Snapshot{}, err
 	}
 	var st session.Standing
 	if m.ParticipantID != "" {
 		res, err := h.rooms.Standings(ctx, m.Code, v.Room.QuestionID, []quiz.ParticipantID{m.ParticipantID})
 		if err != nil {
-			return nil, err
+			return protocol.Snapshot{}, err
 		}
 		st = res.ByID[m.ParticipantID]
 	}
 	set, _ := h.cache.Get(m.SetID)
-	return protocol.Encode(protocol.TypeSnapshot, "", BuildSnapshot(v, set, *m, st))
+	return BuildSnapshot(v, set, m, st), nil
 }
 
 // view reads a room's shared part once for all concurrent callers; the read outlives a caller that gives up.

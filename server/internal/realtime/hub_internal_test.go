@@ -50,12 +50,16 @@ type fakeSubs struct {
 	ensured map[quiz.Code]int
 	dropped map[quiz.Code]int
 	fail    error
+	rec     *recorder // optional: records "subscribe"
 }
 
 func newFakeSubs() *fakeSubs {
 	return &fakeSubs{ensured: map[quiz.Code]int{}, dropped: map[quiz.Code]int{}}
 }
 func (s *fakeSubs) Ensure(_ context.Context, code quiz.Code) error {
+	if s.rec != nil {
+		s.rec.add("subscribe")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensured[code]++

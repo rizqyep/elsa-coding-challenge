@@ -162,7 +162,12 @@ func internalOptions(c *fakeClock, queue int) Options {
 // start runs a connection over a fake socket until the test ends.
 func start(t *testing.T, s *shared, sock *fakeSocket) *Conn {
 	t.Helper()
-	c := newConn(sock, auth.Claims{ParticipantID: "p-1", Role: auth.RoleParticipant}, s)
+	return startAs(t, s, sock, auth.Claims{ParticipantID: "p-1", Role: auth.RoleParticipant})
+}
+
+func startAs(t *testing.T, s *shared, sock *fakeSocket, claims auth.Claims) *Conn {
+	t.Helper()
+	c := newConn(sock, claims, s)
 	done := make(chan struct{})
 	go func() { c.run(); close(done) }()
 	t.Cleanup(func() {

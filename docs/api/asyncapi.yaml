@@ -7,7 +7,7 @@ info:
 
     **Envelope:** every message is JSON `{"v": 1, "type": "…", "id": "…", "data": {…}}`. `id` is set by the client on requests and echoed on the reply. Payload schemas (JSON Schema draft-07) are in `schemas/ws/`.
 
-    **Versions:** `v` is the protocol version. Within v1 only additive changes are allowed: clients must ignore unknown fields and unknown message types. `stateVersion` and `leaderboard.version` are monotonic, so clients apply a message only if it is newer than what they already have (FR-28), including snapshots.
+    **Versions:** `v` is the protocol version. Within v1 only additive changes are allowed: clients must ignore unknown fields and unknown message types. `stateVersion` and `leaderboard.version` are monotonic, so clients apply a message only if it is newer than what they already have (FR-28), including snapshots. A `finished` quiz state is terminal: clients apply it whatever its version. A join or watch of a quiz whose live data is released gets a finished snapshot from the archived results, with version 0.
 
     **Timestamps** are epoch milliseconds from the server clock (Redis `TIME`). Clients estimate their offset with `ping`/`pong` for countdowns but never decide lateness themselves.
 
@@ -76,6 +76,7 @@ operations:
     channel:
       $ref: '#/channels/quiz'
     summary: Join a quiz as a participant
+    description: A finished quiz is not joined; the reply is a read-only finished snapshot with the final leaderboard and, if the caller took part, their result (FR-13). One quiz per connection; a second join or watch gets `already_joined`.
     messages:
     - $ref: '#/channels/quiz/messages/join'
     reply:

@@ -48,6 +48,7 @@ type Options struct {
 	CloseGrace        time.Duration // how long to wait for the client's close reply
 	Now               func() time.Time
 	RandIntN          func(n int) int
+	OnError           func(code protocol.ErrorCode) // called once per error sent (errors_total, TRD §9.6)
 }
 
 // OptionsFrom maps the gateway configuration (TRD §2.3).
@@ -85,6 +86,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.RandIntN == nil {
 		o.RandIntN = rand.IntN
+	}
+	if o.OnError == nil {
+		o.OnError = func(protocol.ErrorCode) {}
 	}
 	return o
 }
