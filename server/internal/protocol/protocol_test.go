@@ -266,3 +266,23 @@ func jsonEqual(t *testing.T, a, b []byte) bool {
 	}
 	return reflect.DeepEqual(x, y)
 }
+
+func TestValidateServer_AcceptsExamplesAndRejectsContractBreaks(t *testing.T) {
+	schemas := loadSchemas(t)
+	for _, typ := range protocol.ServerTypes() {
+		frame, _ := json.Marshal(schemas["ws/server/"+string(typ)+".json"].raw["examples"].([]any)[0])
+		if err := protocol.ValidateServer(frame); err != nil {
+			t.Errorf("%s example rejected: %v", typ, err)
+		}
+	}
+	bad := map[string]string{
+		"answer key in a question": `{"v":1,"type":"question","data":{"stateVersion":2,"question":{"questionId":"q","index":0,"count":1,"prompt":"p","options":[{"id":"a","text":"A"},{"id":"b","text":"B"}],"openedAt":1,"deadline":2,"closeAt":2,"correctOptionId":"a"}}}`,
+		"unknown type":             `{"v":1,"type":"surprise","data":{}}`,
+		"not json":                 `nope`,
+	}
+	for name, frame := range bad {
+		if err := protocol.ValidateServer([]byte(frame)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

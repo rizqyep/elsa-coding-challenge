@@ -30,20 +30,48 @@ func (embedLoader) Load(url string) (any, error) {
 	return jsonschema.UnmarshalJSON(f)
 }
 
-var clientSchemas = sync.OnceValues(func() (map[Type]*jsonschema.Schema, error) {
+var (
+	clientSchemas = sync.OnceValues(func() (map[Type]*jsonschema.Schema, error) { return compile("client", ClientTypes()) })
+	serverSchemas = sync.OnceValues(func() (map[Type]*jsonschema.Schema, error) { return compile("server", ServerTypes()) })
+)
+
+func compile(side string, types []Type) (map[Type]*jsonschema.Schema, error) {
 	c := jsonschema.NewCompiler()
 	c.DefaultDraft(jsonschema.Draft7)
 	c.UseLoader(jsonschema.SchemeURLLoader{"embed": embedLoader{}})
 	out := make(map[Type]*jsonschema.Schema)
-	for _, t := range ClientTypes() {
-		s, err := c.Compile(schemaBase + "ws/client/" + string(t) + ".json")
+	for _, t := range types {
+		s, err := c.Compile(schemaBase + "ws/" + side + "/" + string(t) + ".json")
 		if err != nil {
 			return nil, fmt.Errorf("compile %s schema: %w", t, err)
 		}
 		out[t] = s
 	}
 	return out, nil
-})
+}
+
+// ValidateServer checks a server frame against its JSON Schema; for tests and the test kit.
+func ValidateServer(frame []byte) error {
+	var head struct {
+		Type Type `json:"type"`
+	}
+	if err := json.Unmarshal(frame, &head); err != nil {
+		return err
+	}
+	all, err := serverSchemas()
+	if err != nil {
+		return err
+	}
+	schema, ok := all[head.Type]
+	if !ok {
+		return fmt.Errorf("unknown server message type %q", head.Type)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(frame))
+	if err != nil {
+		return err
+	}
+	return schema.Validate(doc)
+}
 
 // ClientMessage is a decoded, schema-valid client frame.
 type ClientMessage struct {
