@@ -351,3 +351,23 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - Each code commit was checked out in its own worktree: build, vet, golangci-lint, `go test -race`, and `go mod tidy -diff` all pass for every commit.
   - The final working tree is byte-identical to the pre-commit state (`Makefile`, Compose file, `go.mod`, `go.sum`).
   - `make check` passes on a fresh checkout of `HEAD`, with dependencies installed from scratch. This closes task-01's clean-clone criterion.
+
+### AI-020: Domain core (task-06, task-07, task-08)
+
+- **Date / phase:** 2026-09-29 · P1 domain
+- **Task type:** TDD implementation
+- **What I asked, and my decisions:**
+  - Start the domain tasks. **I chose to review tests and code together after implementation** for this batch, instead of reviewing the tests first (a deliberate relaxation of the D14 gate).
+  - Mid-way: "keep only necessary inline comments on the code; others should refer to memory entries or docs entries".
+- **How the AI kept TDD honest without my up-front review:**
+  - For each task, tests were written first and confirmed failing (red), then implemented to green.
+  - **Test vectors were checked independently before any Go code existed:** the 14 scoring vectors were recomputed from the formula in Python (0 mismatches); the 14 transition vectors were compared with a separate Python model of the TRD §3.3 table (0 mismatches). A wrong expected value would otherwise have been "fixed" by bending the implementation to match.
+  - **Every key rule got a mutation check:** rejection sampling disabled → bias and skip tests fail; rounding instead of flooring → 3 vectors fail; early close moving `Deadline` → `TestEarlyClose` fails; reveal timed from `CloseAt` → the "late close" vector fails. All restored and green.
+- **Catches:**
+  - The first bias test depended on which partial code was discarded at the end; redesigned (six full rounds → exactly 48 of each symbol) before implementing.
+  - One mutation (limit set to 256) failed to *compile*, because 256 doesn't fit in a byte. It was discarded as proving nothing and replaced with a real behavioural mutation.
+  - The strict vector decoder (unknown fields rejected, so a renamed field can't be silently ignored) caught an undeclared top-level `description`. The field was declared and the strictness kept.
+  - A pointless test helper that only wrapped `bytes.NewReader` was removed.
+- **Comment cleanup (my request):** explanatory comments were cut to one-liners pointing to the TRD or the vector files. The rule is now in TRD §1.4 and saved as a standing preference.
+- **Deviation noted for review:** scoring uses integer milliseconds (`int64`) rather than the `time.Time` sketched in TRD §3.4, so Go and Lua do identical arithmetic on identical inputs.
+- **Verification:** `make check` green after each task commit and after the comment cleanup.
