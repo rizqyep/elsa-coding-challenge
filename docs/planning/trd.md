@@ -727,16 +727,25 @@ type registry struct {
 
 - Shard = `fnv32(code) % REGISTRY_SHARDS`. Join and leave take the shard's write lock only.
 - **Broadcast:** take the read lock, copy the room's connection list, release the lock, then for each connection do a **non-blocking** send to its queue. A full queue triggers the slow-client policy. No lock is held while touching sockets or queues.
-- The first connection in a room triggers `SUBSCRIBE room:{C}`. The last one leaving triggers `UNSUBSCRIBE`, reference-counted per room.
+- **Entering a room** (`Hub.Enter`): take a question-set reference (one per connection; the cache is reference-counted), register, then make sure the room is subscribed and **wait for Redis to confirm it**. Writing `SUBSCRIBE` isn't enough: until Redis has processed it, a publish can still be missed, and the join reads its snapshot right after `Enter` returns. A newer connection for the same participant replaces the older one, which is closed with 4000.
+- **Leaving:** unregister and release the reference. The last connection out drops the subscription, unless the room was re-entered in the meantime (the subscriber re-checks the registry under its own lock).
 
 ### 7.5 Room events → client messages
 
-One subscriber goroutine per gateway reads the Redis pub/sub connection in order. Redis runs scripts one at a time and delivers publishes in order, so events arrive in version order. The gateway still drops any event whose version isn't newer than the room's last seen version.
+One subscriber goroutine per gateway reads the Redis pub/sub connection in order. Redis runs scripts one at a time and delivers publishes in order, so events arrive in version order. The gateway still drops any event whose version isn't newer than the room's last seen version (`state` and `finished` share one counter, `lb` has its own).
+
+**The subscriber runs its own receive loop, not go-redis's `Channel()`.** `Channel()` reconnects and resubscribes silently, hides subscription confirmations, and drops messages when its buffer stays full, so the gateway couldn't tell when to resync. The subscriber instead:
+- counts confirmations per `SUBSCRIBE` sent, so a late confirmation of an earlier subscription can't release a newer join early;
+- pings after 15 s of silence, and treats an unanswered ping as a dead connection (a half-open TCP connection never errors on its own);
+- on any error, closes the connection, backs off (full jitter, 100 ms → 5 s), reconnects and resubscribes every local room in one command;
+- signals each room **once its own resubscription is confirmed**, so the snapshot push that follows can't miss an event.
+
+Redis reads made because of an event (ranks, resubscribe snapshots) run off the subscriber goroutine, at most 16 at a time per gateway.
 
 | Internal event | Client message(s) |
 |---|---|
-| `state`, status `question_open` | `question`: question text and options from the cache, times from the event. Built once, broadcast as a prepared message |
-| `state`, status `question_closed` | `question_closed` with the correct option from the cache (broadcast). Then personal ranks: one pipeline of `ZSCORE` + `ZCOUNT (score +inf` per local participant, and a `rank` message to each |
+| `state`, status `question_open` | `question`: question text and options from the cache, times from the event. Built once, broadcast as a prepared message. An early close sends the same question with an earlier `closeAt` and a newer version |
+| `state`, status `question_closed` | `question_closed` with the correct option from the cache and `nextTransitionAt` from `x` (broadcast). Then personal ranks: one `standings` read for every local participant (score, participants with a higher score, and the count, in one round trip), and a `rank` message to each |
 | `state`, status `finished` / `expired` | `quiz_finished` from the `finished` event / `quiz_state` |
 | `lb` | `leaderboard` (broadcast) |
 | `kick` | Close local connections of that participant, except the one named in the event, with 4000 |
@@ -780,7 +789,7 @@ Every shared dependency a burst could pile onto has a guard:
 | Reconnect storm after a gateway dies | `WS_MAX_CONNECTIONS` and the join admission bucket, checked **before** the upgrade, so a rejected client costs no goroutine or buffer |
 | Rejected clients retrying together | `Retry-After` jittered by 0–2 s; browsers, which can't read it, use full-jitter reconnect backoff (§9.5) |
 | Every connection resyncing when Redis stalls | 32 gateway-wide resync slots plus 0–250 ms jitter (§7.6) |
-| Subscriber reconnect pushing snapshots to every connection (§9.3) | Snapshot reads coalesced per room: one room-state read shared by the room's connections (task-19) |
+| Subscriber reconnect pushing snapshots to every connection (§9.3) | One room read (`view`) and one standings read per room, whatever its size; at most 16 rooms at a time. Concurrent slow-client resyncs in a room also share one room read |
 | One client flooding requests | One request at a time per connection, and the rate limit before decoding (§7.1, §7.3) |
 
 ---
@@ -858,7 +867,7 @@ Every call carries a `context` deadline. Nothing waits forever.
 | Quiz creation | Client (host) after 503 | — | Transaction rolls back on failure; no half-created quiz |
 | Transition, leaderboard tick | Next scheduler poll | Automatic (100 / 200 ms) | The transition script applies only what is due, atomically; leaderboard versions only increase |
 | Answer flush, finalise | Visibility timeout | Job due again after 30 s; repeated failures raise `flush_failures_total` | Primary key + `ON CONFLICT DO NOTHING`; one transaction |
-| Pub/sub subscription dropped | Gateway | Reconnect with full-jitter backoff (100 ms → 5 s), resubscribe every local room, **then send a fresh `snapshot` to each local connection** | Snapshots are complete and versioned, so nothing missed while disconnected matters |
+| Pub/sub subscription dropped, or a health-check ping unanswered | Gateway | Reconnect with full-jitter backoff (100 ms → 5 s), resubscribe every local room in one command, **then, once each room's resubscription is confirmed, send its connections a fresh `snapshot`**: one room read and one standings read per room, not per connection (§7.10) | Snapshots are complete and versioned, so nothing missed while disconnected matters |
 | Presence refresh failed | Next refresh | — | Last-seen only moves forward |
 
 **Backoff formula (full jitter):** `sleep = random(0, min(cap, base × 2^attempt))`. Spreading retries randomly avoids synchronised waves of retries after an outage.

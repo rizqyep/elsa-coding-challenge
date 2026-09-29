@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -45,6 +46,7 @@ type outbound struct {
 
 // Conn is one client connection: a read goroutine and the socket's only writer (TRD §7.2).
 type Conn struct {
+	id      string
 	sock    socket
 	claims  auth.Claims
 	s       *shared
@@ -62,11 +64,14 @@ type Conn struct {
 	resyncPending atomic.Bool
 
 	violations []time.Time // read goroutine only
+
+	member atomic.Pointer[Member] // set by Hub.Enter
 }
 
 func newConn(sock socket, claims auth.Claims, s *shared) *Conn {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Conn{
+		id:         rand.Text(),
 		sock:       sock,
 		claims:     claims,
 		s:          s,
@@ -79,8 +84,19 @@ func newConn(sock socket, claims auth.Claims, s *shared) *Conn {
 	}
 }
 
+// ID identifies the connection; kick events name the one to keep (FR-12).
+func (c *Conn) ID() string { return c.id }
+
 // Claims identify the connection's caller.
 func (c *Conn) Claims() auth.Claims { return c.claims }
+
+// Member returns the room the connection is in, if any.
+func (c *Conn) Member() (Member, bool) {
+	if m := c.member.Load(); m != nil {
+		return *m, true
+	}
+	return Member{}, false
+}
 
 // Context is cancelled when the connection starts closing.
 func (c *Conn) Context() context.Context { return c.ctx }

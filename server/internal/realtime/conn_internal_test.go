@@ -73,8 +73,11 @@ func (f *fakeSocket) WriteMessage(_ int, data []byte) error {
 func (f *fakeSocket) WritePreparedMessage(pm *websocket.PreparedMessage) error {
 	f.wait()
 	f.mu.Lock()
-	l := f.labels[pm]
+	l, ok := f.labels[pm]
 	f.mu.Unlock()
+	if !ok {
+		l = fmt.Sprintf("pm:%p", pm) // a broadcast from the hub: same pointer means the same encoded frame
+	}
 	f.record(l)
 	return nil
 }
@@ -418,4 +421,17 @@ func TestResync_WaitingForASlotStopsWhenTheConnectionCloses(t *testing.T) {
 	cb.Close(websocket.CloseGoingAway, "bye")
 	waitFor(t, "b to stop while waiting for a slot", func() bool { return h.closed.Load() == 1 })
 	close(hold)
+}
+
+func TestConn_IDsAreUniqueAndNonEmpty(t *testing.T) {
+	clk := &fakeClock{now: time.Unix(1_800_000_000, 0)}
+	s := newShared(internalOptions(clk, 4), &snapHandler{snapshot: func(context.Context) ([]byte, error) { return nil, nil }}, nil)
+	seen := map[string]bool{}
+	for range 1000 {
+		id := newConn(newFakeSocket(), auth.Claims{}, s).ID()
+		if id == "" || seen[id] {
+			t.Fatalf("connection id %q empty or repeated", id)
+		}
+		seen[id] = true
+	}
 }
