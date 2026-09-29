@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuestionMessage",
+  "description": "A question opened, or its close time moved earlier (early close). Idempotent by questionId: replace what is shown.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "question"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "stateVersion"
+      ],
+      "properties": {
+        "question": {
+          "$ref": "../../common.json#/definitions/PublicQuestion"
+        },
+        "stateVersion": {
+          "$ref": "../../common.json#/definitions/Version"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "question",
+      "data": {
+        "question": {
+          "questionId": "syn-03",
+          "index": 2,
+          "count": 10,
+          "prompt": "Choose the synonym of 'rapid'",
+          "options": [
+            {
+              "id": "syn-03-a",
+              "text": "slow"
+            },
+            {
+              "id": "syn-03-b",
+              "text": "quick"
+            },
+            {
+              "id": "syn-03-c",
+              "text": "quiet"
+            },
+            {
+              "id": "syn-03-d",
+              "text": "heavy"
+            }
+          ],
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000
+        },
+        "stateVersion": 6
+      }
+    }
+  ]
+}

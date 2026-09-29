@@ -652,6 +652,8 @@ The contracts are real files, written before the code (D13). This section explai
 | `snapshot` | reply to join/watch, and resync after a slow-client drop |
 | `error` | request failure or connection-level problem |
 
+**Server rule:** every client frame is validated against its JSON Schema at runtime (embedded copy of `docs/api/schemas`) before it is dispatched. Unknown fields in client frames are rejected.
+
 **Client rules:**
 - Apply state only if its version is newer, **including snapshots**. The gateway subscribes a connection to its room *before* reading the snapshot, so an event can arrive before an older snapshot. Monotonic versions make that ordering harmless.
 - Ignore unknown fields and unknown message types (additive changes within v1).

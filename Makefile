@@ -60,18 +60,19 @@ test-unit-client: client/node_modules
 	cd client && npm test
 
 ##@ Contracts and code generation (D13)
-GENERATED := server/internal/httpapi/gen/api.gen.go client/src/api/schema.ts client/src/protocol/messages.ts
+GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas client/src/api/schema.ts client/src/protocol/messages.ts
 
 generate: require-go tools/contracts/node_modules ## Regenerate code from docs/api and module interfaces (output is committed)
 	cd server/internal/httpapi && $(GO) tool -modfile=../../tools/go.mod oapi-codegen -config oapi-codegen.yaml ../../../docs/api/openapi.yaml
+	rm -rf server/internal/protocol/schemas && cp -r docs/api/schemas server/internal/protocol/schemas
 	cd server && $(GO) generate ./...
 	cd tools/contracts && npm run --silent gen:api -- ../../client/src/api/schema.ts && npm run --silent gen:protocol
 
 check-generated: ## Fail if committed generated code is out of date with docs/api
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
-	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp "$$f" "$$tmp/$$f"; done && \
+	for f in $(GENERATED); do mkdir -p "$$tmp/$$(dirname $$f)"; cp -r "$$f" "$$tmp/$$f"; done && \
 	$(MAKE) --no-print-directory generate >/dev/null && \
-	stale=0; for f in $(GENERATED); do cmp -s "$$f" "$$tmp/$$f" || { echo "stale: $$f"; stale=1; }; done; \
+	stale=0; for f in $(GENERATED); do diff -rq "$$f" "$$tmp/$$f" >/dev/null || { echo "stale: $$f"; stale=1; }; done; \
 	if [ $$stale -ne 0 ]; then echo "Generated code was out of date and has been regenerated; review and commit it."; exit 1; fi
 
 lint-contracts: tools/contracts/node_modules ## Validate openapi.yaml and asyncapi.yaml

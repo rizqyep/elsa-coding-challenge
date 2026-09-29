@@ -77,6 +77,16 @@ func decodeFile(t *testing.T, path string) any {
 	return v
 }
 
+// toSchemaValue decodes a frame the way the schema validator expects (numbers as json.Number).
+func toSchemaValue(t *testing.T, frame []byte) any {
+	t.Helper()
+	v, err := jsonschema.UnmarshalJSON(bytes.NewReader(frame))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
 // firstExample returns a deep copy of a schema's first example, safe to mutate.
 func firstExample(t *testing.T, f schemaFile) map[string]any {
 	t.Helper()

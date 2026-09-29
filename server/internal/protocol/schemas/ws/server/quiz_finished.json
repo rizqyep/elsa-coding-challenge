@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuizFinishedMessage",
+  "description": "The quiz finished. The full leaderboard is available from the REST API (FR-27).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "quiz_finished"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "finalTop",
+        "participantCount",
+        "stateVersion"
+      ],
+      "properties": {
+        "finalTop": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "../../common.json#/definitions/LeaderboardEntry"
+          }
+        },
+        "participantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stateVersion": {
+          "$ref": "../../common.json#/definitions/Version"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "quiz_finished",
+      "data": {
+        "finalTop": [
+          {
+            "rank": 1,
+            "participantId": "u_8f3a2c",
+            "displayName": "Rina",
+            "score": 574
+          },
+          {
+            "rank": 2,
+            "participantId": "u_19bd07",
+            "displayName": "Tomás",
+            "score": 551
+          },
+          {
+            "rank": 2,
+            "participantId": "u_c4e611",
+            "displayName": "Aiko",
+            "score": 551
+          }
+        ],
+        "participantCount": 3,
+        "stateVersion": 21
+      }
+    }
+  ]
+}

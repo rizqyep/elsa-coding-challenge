@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LeaderboardMessage",
+  "description": "Live leaderboard; identical bytes for everyone in the room (FR-26, NFR-5c).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "leaderboard"
+    },
+    "data": {
+      "$ref": "../../common.json#/definitions/Leaderboard"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "leaderboard",
+      "data": {
+        "version": 42,
+        "participantCount": 3,
+        "top": [
+          {
+            "rank": 1,
+            "participantId": "u_8f3a2c",
+            "displayName": "Rina",
+            "score": 574
+          },
+          {
+            "rank": 2,
+            "participantId": "u_19bd07",
+            "displayName": "Tomás",
+            "score": 551
+          },
+          {
+            "rank": 2,
+            "participantId": "u_c4e611",
+            "displayName": "Aiko",
+            "score": 551
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnswerResultMessage",
+  "description": "Reply to submit_answer. status=duplicate returns the originally stored result (FR-18).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data",
+    "id"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "answer_result"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "questionId",
+        "status",
+        "optionId",
+        "correct",
+        "points",
+        "totalScore",
+        "receivedAt"
+      ],
+      "properties": {
+        "questionId": {
+          "$ref": "../../common.json#/definitions/QuestionId"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "duplicate"
+          ]
+        },
+        "optionId": {
+          "$ref": "../../common.json#/definitions/OptionId"
+        },
+        "correct": {
+          "type": "boolean"
+        },
+        "points": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200
+        },
+        "totalScore": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "receivedAt": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        }
+      }
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "answer_result",
+      "id": "r-7",
+      "data": {
+        "questionId": "syn-03",
+        "status": "accepted",
+        "optionId": "syn-03-b",
+        "correct": true,
+        "points": 186,
+        "totalScore": 574,
+        "receivedAt": 1790000002100
+      }
+    }
+  ]
+}

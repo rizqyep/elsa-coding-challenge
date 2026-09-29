@@ -1,0 +1,227 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Common definitions",
+  "description": "Shared types for WebSocket messages. Timestamps are Unix epoch milliseconds from the server clock (Redis TIME).",
+  "definitions": {
+    "QuizCode": {
+      "type": "string",
+      "pattern": "^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$",
+      "description": "6 characters, no look-alikes (D16).",
+      "examples": [
+        "K7Q2MX"
+      ]
+    },
+    "ParticipantId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "QuestionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "OptionId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "RequestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Client-generated; echoed in the reply."
+    },
+    "DisplayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20,
+      "description": "Trimmed; letters, digits, spaces, - _ . ' (FR-15). Full rules are enforced server-side."
+    },
+    "EpochMillis": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "Version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic; clients ignore anything older than what they have (FR-28)."
+    },
+    "QuizStatus": {
+      "type": "string",
+      "enum": [
+        "lobby",
+        "question_open",
+        "question_closed",
+        "finished",
+        "expired"
+      ]
+    },
+    "PublicOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/OptionId"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "PublicQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A question as clients see it. Never contains the correct option (FR-21).",
+      "required": [
+        "questionId",
+        "index",
+        "count",
+        "prompt",
+        "options",
+        "openedAt",
+        "deadline",
+        "closeAt"
+      ],
+      "properties": {
+        "questionId": {
+          "$ref": "#/definitions/QuestionId"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/definitions/PublicOption"
+          }
+        },
+        "openedAt": {
+          "$ref": "#/definitions/EpochMillis"
+        },
+        "deadline": {
+          "$ref": "#/definitions/EpochMillis",
+          "description": "Original deadline; the speed bonus is computed against it."
+        },
+        "closeAt": {
+          "$ref": "#/definitions/EpochMillis",
+          "description": "When answers stop being accepted; earlier than deadline after an early close. Countdowns use this."
+        }
+      }
+    },
+    "QuizState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "questionIndex",
+        "questionCount",
+        "stateVersion"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/QuizStatus"
+        },
+        "questionIndex": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "questionCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "stateVersion": {
+          "$ref": "#/definitions/Version"
+        }
+      }
+    },
+    "LeaderboardEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "participantId",
+        "displayName",
+        "score"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Equal scores share a rank (FR-24)."
+        },
+        "participantId": {
+          "$ref": "#/definitions/ParticipantId"
+        },
+        "displayName": {
+          "$ref": "#/definitions/DisplayName"
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "Leaderboard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "participantCount",
+        "top"
+      ],
+      "properties": {
+        "version": {
+          "$ref": "#/definitions/Version"
+        },
+        "participantCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/definitions/LeaderboardEntry"
+          }
+        }
+      }
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": [
+        "invalid_message",
+        "unsupported_version",
+        "unknown_type",
+        "rate_limited",
+        "forbidden",
+        "unknown_quiz",
+        "quiz_expired",
+        "already_joined",
+        "not_joined",
+        "invalid_display_name",
+        "wrong_question",
+        "question_closed",
+        "invalid_option",
+        "server_busy",
+        "internal"
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PingMessage",
+  "description": "Application-level ping, used by the client to estimate its clock offset from the server.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "ping"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clientTime"
+      ],
+      "properties": {
+        "clientTime": {
+          "$ref": "../../common.json#/definitions/EpochMillis"
+        }
+      }
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "ping",
+      "data": {
+        "clientTime": 1790000003100
+      }
+    }
+  ]
+}

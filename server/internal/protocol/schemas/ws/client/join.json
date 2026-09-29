@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "JoinMessage",
+  "description": "Participant joins a quiz. One quiz per connection. Reply: snapshot (or error), with the same id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data",
+    "id"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "join"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quizCode",
+        "displayName"
+      ],
+      "properties": {
+        "quizCode": {
+          "$ref": "../../common.json#/definitions/QuizCode"
+        },
+        "displayName": {
+          "$ref": "../../common.json#/definitions/DisplayName"
+        }
+      }
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "join",
+      "id": "r-1",
+      "data": {
+        "quizCode": "K7Q2MX",
+        "displayName": "Rina"
+      }
+    }
+  ]
+}
