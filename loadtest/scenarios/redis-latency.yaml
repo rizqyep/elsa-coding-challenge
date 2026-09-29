@@ -1,0 +1,17 @@
+# big-room with +20 ms on every Redis call: answers still meet NFR-7. Needs make up PROFILES=chaos.
+name: redis-latency
+questionSet: demo-quick
+window: 10s
+reveal: 3s
+rooms: 1
+participantsPerRoom: 5000
+joinRampUp: 20s
+answers:
+  within: 2s
+  correctRatio: 0.7
+  noAnswerRatio: 0.02
+chaos:
+  - at: start+0s
+    action: redis-latency 20
+seed: 5
+assert: [nfr7, reconciliation]

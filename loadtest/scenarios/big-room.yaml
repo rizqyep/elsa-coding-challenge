@@ -1,0 +1,14 @@
+# One large room: everyone answers each question within 2 s (NFR-1, NFR-5). Scale with participants=10000.
+name: big-room
+questionSet: demo-quick   # 3 questions; the API has no per-quiz question count
+window: 10s
+reveal: 3s
+rooms: 1
+participantsPerRoom: 5000
+joinRampUp: 20s
+answers:
+  within: 2s
+  correctRatio: 0.7
+  noAnswerRatio: 0.02
+seed: 1
+assert: [nfr6, nfr7, nfr8, nfr9, reconciliation, no-errors]

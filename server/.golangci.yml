@@ -11,6 +11,10 @@ linters:
       # Tests read fixtures and contract files from paths they build themselves.
       - path: _test\.go
         linters: [gosec]
+      # The simulator reads the scenario file its operator names on the command line.
+      - path: cmd/sim/
+        linters: [gosec]
+        text: G304
       # The test kit drives Docker with arguments it builds itself, and seeds math/rand so scenarios repeat.
       - path: testkit/
         linters: [gosec]

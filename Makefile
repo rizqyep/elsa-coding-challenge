@@ -119,6 +119,25 @@ test-integration: require-go ## Integration tests against real Redis, PostgreSQL
 test-e2e: require-go ## End-to-end and fault tests against the running stack (make up PROFILES=chaos first)
 	cd server && $(GO) test -tags e2e -count=1 -timeout 20m -v ./e2e/
 
+##@ Simulation (TRD §11.4)
+SCENARIO ?= big-room
+SIM_ARGS = $(if $(PARTICIPANTS),participants=$(PARTICIPANTS)) $(if $(ROOMS),rooms=$(ROOMS)) $(if $(WINDOW),window=$(WINDOW)) \
+	$(if $(RAMP),ramp=$(RAMP)) $(if $(SLOW),slow=$(SLOW)) $(if $(CHAOS),chaos=$(CHAOS)) $(if $(SEED),seed=$(SEED))
+SIM_DOCKER = $(if $(shell grep -q '^chaos:' loadtest/scenarios/$(SCENARIO).yaml && echo y),-v /var/run/docker.sock:/var/run/docker.sock --group-add $(shell stat -c %g /var/run/docker.sock))
+
+sim: ## Run a scenario, e.g. make sim SCENARIO=big-room PARTICIPANTS=10000 (report in loadtest/results)
+	@if command -v $(GO) >/dev/null; then \
+		cd server && $(GO) run ./cmd/sim ../loadtest/scenarios/$(SCENARIO).yaml $(SIM_ARGS); \
+	else \
+		docker run --rm --network host --user $$(id -u):$$(id -g) -e HOME=/tmp -e GOPATH=/tmp/go -e GOCACHE=/tmp/go-build \
+			$(SIM_DOCKER) -v $(CURDIR):/src -w /src/server golang:1.26 \
+			go run ./cmd/sim ../loadtest/scenarios/$(SCENARIO).yaml $(SIM_ARGS); \
+	fi
+
+k6: ## Run the k6 many-rooms script in Docker, e.g. make k6 ROOMS=100 PER_ROOM=20
+	docker run --rm --network host -e BASE=$(URL) -e ROOMS=$(or $(ROOMS),50) -e PER_ROOM=$(or $(PER_ROOM),20) \
+		-v $(CURDIR)/loadtest/k6:/scripts grafana/k6:1.3.0 run /scripts/many-rooms.js
+
 ##@ Contracts and code generation (D13)
 GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas $(wildcard server/internal/*/mocks) client/src/api/schema.ts client/src/protocol/messages.ts
 
@@ -149,4 +168,4 @@ client/node_modules: client/package-lock.json
 require-go:
 	@command -v $(GO) >/dev/null || { echo "Go is not installed. On Fedora: sudo dnf install golang"; exit 1; }
 
-.PHONY: help up migrate down reset scale demo ps logs redis-cli psql chaos-kill chaos-stop chaos-start chaos-redis-latency chaos-redis-down chaos-pg-down chaos-reset check lint lint-server lint-client lint-contracts test-unit test-unit-server test-unit-client test-integration test-e2e generate check-generated require-go
+.PHONY: help up migrate down reset scale demo ps logs redis-cli psql chaos-kill chaos-stop chaos-start chaos-redis-latency chaos-redis-down chaos-pg-down chaos-reset check lint lint-server lint-client lint-contracts test-unit test-unit-server test-unit-client test-integration test-e2e sim k6 generate check-generated require-go

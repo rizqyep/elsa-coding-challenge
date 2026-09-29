@@ -1,0 +1,15 @@
+# Many small rooms starting a little apart: the workers' transitions must keep up (NFR-2).
+name: many-rooms
+questionSet: demo-quick
+window: 8s
+reveal: 2s
+rooms: 200
+participantsPerRoom: 50
+joinRampUp: 5s
+roomStagger: 100ms
+answers:
+  within: 3s
+  correctRatio: 0.7
+  noAnswerRatio: 0.05
+seed: 2
+assert: [nfr6, nfr7, nfr8, nfr9, transition-lag, reconciliation, no-errors]

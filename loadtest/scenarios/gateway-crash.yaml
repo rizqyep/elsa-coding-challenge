@@ -1,0 +1,17 @@
+# big-room with one gateway killed mid-question: every client is back within 15 s and nothing is scored twice (NFR-15).
+name: gateway-crash
+questionSet: demo-quick
+window: 10s
+reveal: 3s
+rooms: 1
+participantsPerRoom: 5000
+joinRampUp: 20s
+answers:
+  within: 2s
+  correctRatio: 0.7
+  noAnswerRatio: 0.02
+chaos:
+  - at: question:2+1s
+    action: kill ws-1
+seed: 3
+assert: [rejoin, reconciliation]

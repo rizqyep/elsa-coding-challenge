@@ -1,0 +1,15 @@
+# big-room with 5% of clients reading slowly: the rest still meet NFR-6; slow ones are resynced or closed with 4003 (NFR-17).
+name: slow-clients
+questionSet: demo-quick
+window: 10s
+reveal: 3s
+rooms: 1
+participantsPerRoom: 5000
+joinRampUp: 20s
+answers:
+  within: 2s
+  correctRatio: 0.7
+  noAnswerRatio: 0.02
+slowClients: 0.05
+seed: 4
+assert: [nfr6, nfr8, reconciliation]
