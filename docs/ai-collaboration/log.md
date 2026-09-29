@@ -410,3 +410,19 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - Seed checks ported from task-04.
   - **Lua mutations:** `ZADD` without `NX` → a rejoin reset the score, caught; swapped `start` checks → parity test fails.
   - `make test-integration` and `make check` green.
+
+### AI-023: The answer script (task-12)
+
+- **Date / phase:** 2026-09-29 · P2 Redis scripts
+- **Task type:** TDD implementation, the scoring core
+- **Design problem and choice:** the answer script takes its time from Redis `TIME`, so the shared scoring vectors can't set the receive time.
+  - The AI **rejected adding a time-override parameter** to the production script: any caller able to pass one could pick their receive time.
+  - Instead, the scoring function lives in its own `points.lua`, prepended to `answer.lua` at load, and tests run that exact function over the vectors.
+  - Real answers are also checked against Go's `Points()` using the receive time Redis returned.
+- **Catches:**
+  - The AI assumed go-redis pipelines have a `Wait` method; the compiler said no. It checked the library source and used the generic `Do("wait", …)` on the pipeline, keeping `EVALSHA` and `WAIT` on one connection.
+  - It recorded a limit of its own test honestly: the replica test can't prove `WAIT` shares the script's connection, because an idle connection's `WAIT` also reports the replica. That guarantee rests on the pipelining.
+- **Verification:**
+  - 10 integration tests on real Redis (plus a replica container) and 5 gomock service tests. The gomock tests assert **exactly one repository call** on failure: no retry, per TRD §9.3.
+  - **Mutation checks, all caught:** Lua rounding (vector parity fails); duplicate check removed (**100 accepted answers, score 19,300 instead of 193**, the exact double-scoring bug the design prevents); early close moving the deadline; `WAIT` dropped.
+  - `make check` and `make test-integration` green.
