@@ -625,3 +625,29 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - 29 deliberate breaks, all caught;
   - `make check` and all 17 integration packages green, with full logs saved;
   - a smoke run of the real `api` and `ws` binaries against Compose with Bun WebSocket clients.
+
+### AI-032: The worker (task-21)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:** I asked to continue after task-20. Under D17 the worker is core: nothing advances a quiz without it.
+- **What the AI produced:**
+  - a generic loop runner in `internal/scheduler`: one pass at a time per loop, skipped ticks on overrun, bounded item pools, liveness;
+  - the three loops (transitions, leaderboard ticks, persistence jobs);
+  - the `cmd/worker` wiring with `/healthz`, `/readyz` and a drain on stop;
+  - a refactor that moved the Redis-aligned clock to `platform/redisx` and removed the empty `fanout` placeholder.
+- **Decisions the AI proposed, for my review:**
+  - Transition claims use Redis-aligned time, so they agree with the scripts' due checks.
+  - Liveness counts a *failed* pass as completed, because restarting doesn't fix Redis; it only catches a stuck loop.
+  - Stopping never cancels a pass already running.
+  - The trace-ID step is dropped under D17.
+- **What the AI checked instead of redoing:** the gomock failure paths for flush and finalise that the task asked for already existed from task-14, so none were duplicated.
+- **What the AI got wrong:**
+  - a test stored `nil` in an `atomic.Value`, which panics;
+  - a liveness test would have flagged the healthy loop too, right after the fake clock jumped;
+  - three mutants proved nothing on the first run: an unused import, an undefined type, and the zsh word-splitting trap again (`-tags integration` passed as one argument, so the package never ran). All were redone until they built and were caught;
+  - lint caught an `http.Get` without a context and an empty-bodied loop in the tests.
+- **Verification:**
+  - scheduler unit tests, run 4 times because they depend on timing;
+  - an integration test in which **two workers run a whole quiz on their own**: early closes, about 1 s for three 5 s questions, every state version published exactly once, leaderboard updates, answers and results saved, room released, liveness 200;
+  - 16 deliberate breaks, all caught;
+  - `make check` and all 19 integration packages green, with logs saved.

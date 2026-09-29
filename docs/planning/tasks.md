@@ -146,7 +146,7 @@ flowchart LR
 | [task-18](tasks/p3-services/task-18-gateway-connections.md) | Gateway: connections | P3 | L | yes | done |
 | [task-19](tasks/p3-services/task-19-gateway-registry-and-room-events.md) | Gateway: registry and room events | P3 | L | yes | done |
 | [task-20](tasks/p3-services/task-20-gateway-message-handlers-and-presence.md) | Gateway: message handlers and presence | P3 | M | yes | done |
-| [task-21](tasks/p3-services/task-21-worker.md) | Worker | P3 | L | yes | todo |
+| [task-21](tasks/p3-services/task-21-worker.md) | Worker | P3 | L | yes | done |
 | [task-22](tasks/p3-services/task-22-shutdown-and-degraded-modes.md) | Shutdown and degraded modes | P3 | S | yes | todo |
 | [task-23](tasks/p3-services/task-23-observability.md) | Observability scaffold (D17) | P3 | S | partial | todo |
 | [task-24](tasks/p4-client/task-24-react-client.md) | React client | P4 | L | partial | todo |

@@ -816,6 +816,9 @@ Each worker runs three independent loops, each on its own `time.Ticker`. A pass 
 
 Several workers run the same loops. Transitions are guarded by the script's due check, leaderboard codes by `SPOP`, and flush jobs by the claim's visibility timeout, so extra workers never duplicate work. They only compete for it.
 
+- The transition claim uses the worker's Redis-aligned clock (the same `redisx.Clock` the gateway uses for `pong`), so it agrees with the scripts' due checks.
+- Each item gets its own deadline: 500 ms per script, 15 s per persistence job (below the 30 s visibility timeout). One failed item is logged and never stops the rest of the pass.
+
 ### 8.2 Idempotency
 
 Every step is safe to repeat, which is what makes crash recovery a no-op:
@@ -831,11 +834,11 @@ Every step is safe to repeat, which is what makes crash recovery a no-op:
 ### 8.3 Health
 
 - **Readiness:** Redis and PostgreSQL reachable, and not shutting down.
-- **Liveness:** each loop records its last completed pass. If any loop hasn't completed a pass in 5× its interval, `/healthz` fails and the process is restarted. This is what the "no healthy workers" alert (non-functional §4.4) counts.
+- **Liveness:** each loop records its last completed pass. If any loop hasn't completed a pass in 5× its interval, `/healthz` fails and the process is restarted. A pass that *failed* (Redis down, say) still counts as completed: restarting wouldn't fix Redis, and readiness already reports it. Liveness only catches a loop that is stuck. This is what the "no healthy workers" alert (non-functional §4.4) counts.
 
 ### 8.4 Shutdown
 
-On `SIGTERM`: stop claiming new work, let in-flight items finish (up to `SHUTDOWN_TIMEOUT`), then exit. A job still claimed at exit becomes due again after its visibility timeout, so nothing is lost.
+On `SIGTERM`: stop claiming new work, let in-flight items finish (up to `SHUTDOWN_TIMEOUT`), then exit. Stopping never cancels a pass already running: the loops pass work a context detached from the stop signal, bounded by the per-item deadlines. A job still claimed at exit becomes due again after its visibility timeout, so nothing is lost.
 
 ---
 
