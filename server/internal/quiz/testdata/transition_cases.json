@@ -1,0 +1,564 @@
+{
+  "description": "Quiz state machine vectors (TRD \u00a73.3). Shared by the Go unit tests (task-08) and the Lua transition-script tests (task-13): edit here, never copy. Times are epoch milliseconds. expect.room is the full room after Next; for not_due and terminal it equals the input.",
+  "cases": [
+    {
+      "name": "lobby before expiry, not started: not due",
+      "now": 1790000001000,
+      "room": {
+        "hostId": "host_1",
+        "status": "lobby",
+        "questionIndex": -1,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 0,
+        "deadline": 0,
+        "closeAt": 0,
+        "nextTransitionAt": 1790001800000,
+        "startRequested": false,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 1
+      },
+      "expect": {
+        "outcome": "not_due",
+        "event": null,
+        "room": {
+          "hostId": "host_1",
+          "status": "lobby",
+          "questionIndex": -1,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 0,
+          "deadline": 0,
+          "closeAt": 0,
+          "nextTransitionAt": 1790001800000,
+          "startRequested": false,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 1
+        }
+      }
+    },
+    {
+      "name": "lobby with start requested: opens question 0",
+      "now": 1790000000000,
+      "room": {
+        "hostId": "host_1",
+        "status": "lobby",
+        "questionIndex": -1,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 0,
+        "deadline": 0,
+        "closeAt": 0,
+        "nextTransitionAt": 1790000000000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 1
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_opened",
+          "questionIndex": 0
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_open",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000,
+          "nextTransitionAt": 1790000015000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 2
+        }
+      }
+    },
+    {
+      "name": "lobby reaches its expiry without a start: expired",
+      "now": 1790001800000,
+      "room": {
+        "hostId": "host_1",
+        "status": "lobby",
+        "questionIndex": -1,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 0,
+        "deadline": 0,
+        "closeAt": 0,
+        "nextTransitionAt": 1790001800000,
+        "startRequested": false,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 1
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "quiz_expired",
+          "questionIndex": -1
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "expired",
+          "questionIndex": -1,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 0,
+          "deadline": 0,
+          "closeAt": 0,
+          "nextTransitionAt": 0,
+          "startRequested": false,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 2
+        }
+      }
+    },
+    {
+      "name": "start requested and lobby expiry both due: start wins",
+      "now": 1790001800010,
+      "room": {
+        "hostId": "host_1",
+        "status": "lobby",
+        "questionIndex": -1,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 0,
+        "deadline": 0,
+        "closeAt": 0,
+        "nextTransitionAt": 1790001800000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 1
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_opened",
+          "questionIndex": 0
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_open",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790001800010,
+          "deadline": 1790001815010,
+          "closeAt": 1790001815010,
+          "nextTransitionAt": 1790001815010,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 2
+        }
+      }
+    },
+    {
+      "name": "open question 1 ms before close: not due",
+      "now": 1790000014999,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_open",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000015000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 2
+      },
+      "expect": {
+        "outcome": "not_due",
+        "event": null,
+        "room": {
+          "hostId": "host_1",
+          "status": "question_open",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000,
+          "nextTransitionAt": 1790000015000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 2
+        }
+      }
+    },
+    {
+      "name": "open question at close time: closes, reveal starts",
+      "now": 1790000015000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_open",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000015000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 2
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_closed",
+          "questionIndex": 0
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_closed",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000,
+          "nextTransitionAt": 1790000020000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 3
+        }
+      }
+    },
+    {
+      "name": "early-closed question: closes at the moved close time, deadline unchanged",
+      "now": 1790000004000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_open",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000004000,
+        "nextTransitionAt": 1790000004000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 2
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_closed",
+          "questionIndex": 0
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_closed",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000004000,
+          "nextTransitionAt": 1790000009000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 3
+        }
+      }
+    },
+    {
+      "name": "close applied late (worker was down): reveal is timed from the actual close",
+      "now": 1790000025000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_open",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000015000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 2
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_closed",
+          "questionIndex": 0
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_closed",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000,
+          "nextTransitionAt": 1790000030000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 3
+        }
+      }
+    },
+    {
+      "name": "reveal not over yet: not due",
+      "now": 1790000019999,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_closed",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000020000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 3
+      },
+      "expect": {
+        "outcome": "not_due",
+        "event": null,
+        "room": {
+          "hostId": "host_1",
+          "status": "question_closed",
+          "questionIndex": 0,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000000000,
+          "deadline": 1790000015000,
+          "closeAt": 1790000015000,
+          "nextTransitionAt": 1790000020000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 3
+        }
+      }
+    },
+    {
+      "name": "reveal over, more questions: opens the next question",
+      "now": 1790000020000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_closed",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000020000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 3
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_opened",
+          "questionIndex": 1
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_open",
+          "questionIndex": 1,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000020000,
+          "deadline": 1790000035000,
+          "closeAt": 1790000035000,
+          "nextTransitionAt": 1790000035000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 4
+        }
+      }
+    },
+    {
+      "name": "next question opened late: gets a full window from when it actually opens",
+      "now": 1790000027000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_closed",
+        "questionIndex": 0,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000000000,
+        "deadline": 1790000015000,
+        "closeAt": 1790000015000,
+        "nextTransitionAt": 1790000020000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 3
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "question_opened",
+          "questionIndex": 1
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "question_open",
+          "questionIndex": 1,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000027000,
+          "deadline": 1790000042000,
+          "closeAt": 1790000042000,
+          "nextTransitionAt": 1790000042000,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 4
+        }
+      }
+    },
+    {
+      "name": "reveal over after the last question: finished",
+      "now": 1790000060000,
+      "room": {
+        "hostId": "host_1",
+        "status": "question_closed",
+        "questionIndex": 2,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000040000,
+        "deadline": 1790000055000,
+        "closeAt": 1790000055000,
+        "nextTransitionAt": 1790000060000,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 7
+      },
+      "expect": {
+        "outcome": "applied",
+        "event": {
+          "type": "quiz_finished",
+          "questionIndex": 2
+        },
+        "room": {
+          "hostId": "host_1",
+          "status": "finished",
+          "questionIndex": 2,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000040000,
+          "deadline": 1790000055000,
+          "closeAt": 1790000055000,
+          "nextTransitionAt": 0,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 8
+        }
+      }
+    },
+    {
+      "name": "finished quiz: terminal, unchanged",
+      "now": 1790000099000,
+      "room": {
+        "hostId": "host_1",
+        "status": "finished",
+        "questionIndex": 2,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 1790000040000,
+        "deadline": 1790000055000,
+        "closeAt": 1790000055000,
+        "nextTransitionAt": 0,
+        "startRequested": true,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 8
+      },
+      "expect": {
+        "outcome": "terminal",
+        "event": null,
+        "room": {
+          "hostId": "host_1",
+          "status": "finished",
+          "questionIndex": 2,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 1790000040000,
+          "deadline": 1790000055000,
+          "closeAt": 1790000055000,
+          "nextTransitionAt": 0,
+          "startRequested": true,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 8
+        }
+      }
+    },
+    {
+      "name": "expired quiz: terminal, unchanged",
+      "now": 1790001899000,
+      "room": {
+        "hostId": "host_1",
+        "status": "expired",
+        "questionIndex": -1,
+        "questionCount": 3,
+        "windowMs": 15000,
+        "revealMs": 5000,
+        "openedAt": 0,
+        "deadline": 0,
+        "closeAt": 0,
+        "nextTransitionAt": 0,
+        "startRequested": false,
+        "lobbyExpiresAt": 1790001800000,
+        "stateVersion": 2
+      },
+      "expect": {
+        "outcome": "terminal",
+        "event": null,
+        "room": {
+          "hostId": "host_1",
+          "status": "expired",
+          "questionIndex": -1,
+          "questionCount": 3,
+          "windowMs": 15000,
+          "revealMs": 5000,
+          "openedAt": 0,
+          "deadline": 0,
+          "closeAt": 0,
+          "nextTransitionAt": 0,
+          "startRequested": false,
+          "lobbyExpiresAt": 1790001800000,
+          "stateVersion": 2
+        }
+      }
+    }
+  ]
+}
