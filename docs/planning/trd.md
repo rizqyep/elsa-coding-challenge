@@ -790,11 +790,13 @@ Every `PRESENCE_REFRESH`, for each room with local participants, one small scrip
 
 ### 7.9 Shutdown (NFR-16)
 
-On `SIGTERM`:
+On `SIGTERM` (`platform/health.Readiness.Shutdown` runs the steps in this order):
 1. `/readyz` returns 503, so the load balancer stops sending new connections.
-2. New upgrades get 503.
-3. Existing connections are closed with 1012 in jittered batches spread over `SHUTDOWN_TIMEOUT` (default 30 s), so clients don't all reconnect at once.
+2. New upgrades get 503 with a jittered `Retry-After`. nginx has `proxy_next_upstream … http_503` on `/ws`, so a reconnecting client lands on another gateway instead of the draining one (which `least_conn` would otherwise favour, since it has the fewest sockets).
+3. Each open connection is closed with 1012 at its own random point in the first third of `SHUTDOWN_TIMEOUT` (10 s of the default 30 s), so clients don't all reconnect at once. The rest of the timeout is for the HTTP server and the background loops.
 4. Unsubscribe, close Redis and PostgreSQL pools, exit.
+
+Compose gives the Go services `stop_grace_period: 35s`; the default 10 s would kill a gateway mid-drain. The API drains in-flight requests (`http.Server.Shutdown`); the worker stops claiming and lets claimed work finish (§8.4). Measured in task-22: stopping one of two gateways holding 20 sockets closed all 20 with 1012 between 0.2 s and 9.9 s after the stop, all 20 reconnected through nginx with no 502 or 503, and the container exited 0.
 
 ### 7.10 Burst and stampede guards
 
