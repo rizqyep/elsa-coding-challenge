@@ -1,8 +1,267 @@
+/* Draft without direction (ENERGY 1 / RHYTHM 1 / MOTION 1): system colors follow the OS theme,
+   one accent marks the answer you picked and the correct one. */
 :root {
   font-family: system-ui, sans-serif;
+  line-height: 1.5;
   color-scheme: light dark;
+  --accent: #0a58a8;
+  --ok: #17692f;
+  --error: #b3261e;
+  --line: #8a8a8a;
+  --soft: color-mix(in srgb, CanvasText 6%, Canvas);
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #8cc4ff;
+    --ok: #7fd89a;
+    --error: #ffb4ab;
+    --line: #767676;
+  }
+}
+
 body {
   margin: 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.screen {
+  max-width: 40rem;
+  margin: 0 auto;
   padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+h1 {
+  font-size: 1.6rem;
+  line-height: 1.25;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 0;
+}
+
+p {
+  margin: 0 0 8px;
+}
+
+.muted {
+  opacity: 0.8;
+}
+
+.error {
+  color: var(--error);
+}
+
+.notice {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.bar p {
+  margin: 0;
+}
+
+.code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}
+
+.code.big {
+  font-size: 2rem;
+}
+
+.conn-reconnecting strong,
+.conn-closed strong,
+.conn-replaced strong {
+  color: var(--error);
+}
+
+.stage {
+  display: grid;
+  gap: 4px;
+}
+
+.aside {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+}
+
+label.choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+input,
+select {
+  font: inherit;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+input[type='radio'] {
+  min-height: auto;
+  width: 20px;
+  height: 20px;
+}
+
+button {
+  font: inherit;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: Canvas;
+  cursor: pointer;
+  justify-self: start;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.countdown strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.options {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.options button,
+.options li {
+  justify-self: stretch;
+  text-align: left;
+  background: var(--soft);
+  color: CanvasText;
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.options button:disabled {
+  opacity: 1;
+}
+
+.options .picked {
+  border: 2px solid var(--accent);
+}
+
+.options .correct {
+  border: 2px solid var(--ok);
+}
+
+.tag {
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.result.ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.link-row a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.board {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.board li {
+  display: grid;
+  grid-template-columns: 3ch 1fr auto;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--soft);
+}
+
+.board .name {
+  overflow-wrap: anywhere;
+}
+
+.board .score,
+.board .rank {
+  font-variant-numeric: tabular-nums;
+}
+
+.board .me {
+  font-weight: 700;
+}
+
+.board .own-row {
+  border-top: 1px dashed var(--line);
+}
+
+.draft {
+  max-width: 40rem;
+  margin: 24px auto;
+  padding: 0 16px;
+  font-size: 0.85rem;
+  opacity: 0.8;
 }
