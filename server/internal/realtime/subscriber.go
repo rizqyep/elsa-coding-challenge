@@ -76,7 +76,9 @@ func (s *Subscriber) Run(ctx context.Context) {
 	attempt := 0
 	for ctx.Err() == nil {
 		ps := s.connect(ctx)
+		stop := context.AfterFunc(ctx, func() { _ = ps.Close() }) // a blocked read ignores ctx
 		progressed, err := s.receive(ctx, ps)
+		stop()
 		s.mu.Lock()
 		if s.ps == ps {
 			s.ps = nil

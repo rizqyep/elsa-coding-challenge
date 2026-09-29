@@ -557,3 +557,19 @@ func TestLive_SecondConnectionForTheSameParticipantReplacesTheFirst(t *testing.T
 		break
 	}
 }
+// Stopping must not wait out a blocked read; with the 15 s default it would stall every shutdown.
+func TestSubscriber_StopsPromptlyWithTheDefaultHealthInterval(t *testing.T) {
+	tenv.Reset(t)
+	sub := realtime.NewSubscriber(tenv.Redis, newHooks(), realtime.SubscriberOptions{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { sub.Run(ctx); close(done) }()
+	ensure(t, sub, "AAAAAA")
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("subscriber still running 2 s after cancel")
+		<-done
+	}
+}
