@@ -1,11 +1,40 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+COMPOSE := docker compose
 GO      ?= go
+
+-include .env
+export
 
 ##@ General
 help: ## List targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2} /^##@/ {printf "\n%s\n", substr($$0, 5)}' $(MAKEFILE_LIST)
+
+##@ Local stack
+.env:
+	cp .env.example .env
+
+up: .env ## Start the stack and wait until every service is healthy
+	$(COMPOSE) up -d --wait
+
+down: ## Stop the stack (data is kept)
+	$(COMPOSE) down
+
+reset: ## Stop the stack and delete its volumes
+	$(COMPOSE) down -v
+
+ps: ## Show service status
+	$(COMPOSE) ps
+
+logs: ## Follow logs, e.g. make logs S=redis
+	$(COMPOSE) logs -f $(S)
+
+redis-cli: ## Open redis-cli in the Redis container
+	$(COMPOSE) exec redis redis-cli
+
+psql: ## Open psql in the PostgreSQL container
+	$(COMPOSE) exec postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB)
 
 ##@ Build and test
 check: lint test-unit ## Lint and unit tests for server and client (must be green)
@@ -36,4 +65,4 @@ client/node_modules: client/package-lock.json
 require-go:
 	@command -v $(GO) >/dev/null || { echo "Go is not installed. On Fedora: sudo dnf install golang"; exit 1; }
 
-.PHONY: help check lint lint-server lint-client test-unit test-unit-server test-unit-client generate require-go
+.PHONY: help up down reset ps logs redis-cli psql check lint lint-server lint-client test-unit test-unit-server test-unit-client generate require-go
