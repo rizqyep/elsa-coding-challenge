@@ -11,7 +11,9 @@ info:
 
     **Timestamps** are epoch milliseconds from the server clock (Redis `TIME`). Clients estimate their offset with `ping`/`pong` for countdowns but never decide lateness themselves.
 
-    **Close codes:** 1000 normal · 1001 going away · 1008 policy violation (bad origin) · 1009 message too big (> 4 KB) · 1012 service restart (gateway draining; reconnect with backoff) · 1013 try again later (admission limit) · 4000 replaced by a newer connection for the same identity (FR-12) · 4002 repeated rate-limit violations · 4003 slow consumer, resync failed.
+    **Handshake rejections (before the upgrade):** 401 invalid or expired token · 403 origin not allowed · 503 with `Retry-After` (join admission limit, connection cap, or gateway draining). Browsers can't read these statuses and see close 1006 instead.
+
+    **Close codes:** 1000 normal · 1001 going away · 1009 message too big (> 4 KB) · 1012 service restart (gateway draining; reconnect with backoff) · 4000 replaced by a newer connection for the same identity (FR-12) · 4002 repeated rate-limit violations · 4003 slow consumer, resync failed.
 
     **Auth:** the token goes in the `token` query parameter (D15). An invalid token is rejected with HTTP 401 before the upgrade.
 defaultContentType: application/json

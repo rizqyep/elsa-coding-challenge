@@ -162,6 +162,7 @@ All configuration comes from environment variables, parsed and validated at star
 | `WS_PING_INTERVAL` / `WS_PONG_TIMEOUT` | `25s` / `60s` | Heartbeats; dead connections are dropped (NFR-5e) |
 | `WS_RATE_PER_SEC` / `WS_RATE_BURST` | `20` / `40` | Per connection (NFR-21) |
 | `WS_JOIN_ADMISSION_PER_SEC` | `500` | Per gateway; excess joins get "retry later" |
+| `WS_MAX_CONNECTIONS` | `20000` | Per gateway (NFR-3); over it, upgrades get 503 before any goroutine or buffer is allocated |
 | `REGISTRY_SHARDS` | `64` | Connection registry shards |
 | `PRESENCE_REFRESH` / `PRESENCE_TTL` | `10s` / `30s` | |
 | `QUESTION_CACHE_MAX_SETS` | `256` | Memory cap on cached question sets |
@@ -679,12 +680,15 @@ The contracts are real files, written before the code (D13). This section explai
 HTTP GET /ws?token=…
   → origin allowed?            no  → 403
   → token valid, not expired?  no  → 401
-  → join admission bucket ok?  no  → 503 + Retry-After   (before upgrading: cheaper than 1013)
+  → under WS_MAX_CONNECTIONS?  no  → 503 + Retry-After
+  → join admission bucket ok?  no  → 503 + Retry-After (jittered)   (before upgrading: no goroutine or buffer yet)
   → upgrade (gorilla Upgrader: 1 KB read/write buffers, shared write-buffer pool, compression off)
   → start readLoop + writeLoop goroutines
   → state: connected → (join | watch) → in room → closed
 ```
 
+- **Messages on one connection are handled one at a time**, on its read goroutine. A client can't have two requests in flight, so it can't fan out load on its own.
+- **The rate limit runs before decoding**, so a flood costs a token-bucket check, not JSON Schema validation.
 - **One quiz per connection.** A second `join`/`watch` gets `already_joined`. Switching quizzes means opening a new connection.
 - **Allowed messages by state:** before joining: `join`, `watch`, `ping`. After joining: `submit_answer` (participants only), `ping`. Anything else → `error` (`not_joined` / `forbidden` / `unknown_type`).
 
@@ -694,6 +698,8 @@ HTTP GET /ws?token=…
 |---|---|---|
 | `readLoop` | Reads frames, decodes the envelope, applies the rate limiter, dispatches | `SetReadLimit(4096)`; read deadline `WS_PONG_TIMEOUT`, extended by each pong |
 | `writeLoop` | The **only** writer to the socket (gorilla allows one concurrent writer). Drains the send queue, sends pings every `WS_PING_INTERVAL` | Write deadline 10 s per frame; any write error closes the connection |
+
+The read loop runs on the HTTP handler's own goroutine, so a connection costs exactly **two goroutines**. `Close` never blocks its caller: the close frame is written from a short-lived goroutine, because gorilla's `WriteControl` waits for a write that may be stalled.
 
 The send queue is a buffered channel of `WS_SEND_QUEUE_SIZE` items. An item is either a shared `*websocket.PreparedMessage` (room broadcasts) or a personal `[]byte` (replies, ranks).
 
@@ -738,9 +744,9 @@ One subscriber goroutine per gateway reads the Redis pub/sub connection in order
 ### 7.6 Slow clients (NFR-17)
 
 A non-blocking send that finds the queue full:
-1. Empties the connection's queue and marks it `needsResync`.
-2. The writer then sends a fresh `snapshot` (read from Redis) instead of the dropped messages.
-3. If the same connection overflows again within 30 s, it is closed with 4003.
+1. Empties the connection's queue and marks a resync as pending. Until the resync starts, further frames for this connection are dropped: the snapshot supersedes them.
+2. The writer waits a random 0–250 ms and for one of 32 **gateway-wide resync slots**, then clears the pending mark and reads a fresh `snapshot` from Redis. When Redis stalls, every connection overflows at once; the slots and the jitter stop their resyncs from hitting Redis together.
+3. If the same connection overflows again within 30 s, it is closed with 4003. A failed snapshot read also closes with 4003; the client reconnects and gets a snapshot then.
 
 ### 7.7 Presence
 
@@ -763,6 +769,19 @@ On `SIGTERM`:
 2. New upgrades get 503.
 3. Existing connections are closed with 1012 in jittered batches spread over `SHUTDOWN_TIMEOUT` (default 30 s), so clients don't all reconnect at once.
 4. Unsubscribe, close Redis and PostgreSQL pools, exit.
+
+### 7.10 Burst and stampede guards
+
+Every shared dependency a burst could pile onto has a guard:
+
+| Burst | Guard |
+|---|---|
+| Joins missing the question cache | Single-flight per question set (§7.8); entries never expire by time |
+| Reconnect storm after a gateway dies | `WS_MAX_CONNECTIONS` and the join admission bucket, checked **before** the upgrade, so a rejected client costs no goroutine or buffer |
+| Rejected clients retrying together | `Retry-After` jittered by 0–2 s; browsers, which can't read it, use full-jitter reconnect backoff (§9.5) |
+| Every connection resyncing when Redis stalls | 32 gateway-wide resync slots plus 0–250 ms jitter (§7.6) |
+| Subscriber reconnect pushing snapshots to every connection (§9.3) | Snapshot reads coalesced per room: one room-state read shared by the room's connections (task-19) |
+| One client flooding requests | One request at a time per connection, and the rate limit before decoding (§7.1, §7.3) |
 
 ---
 
@@ -857,10 +876,12 @@ Every call carries a `context` deadline. Nothing waits forever.
 | Close / error | Client action |
 |---|---|
 | Network drop, 1001, 1006, 1012 (service restart) | Reconnect with full-jitter backoff (base 500 ms, cap 15 s), re-`join`, resend any unanswered `submit_answer` with its original `id` |
-| 1013 or `server_busy` | Same, but wait at least `retryAfterMs` |
+| HTTP 503 or `server_busy` | Same, but wait at least `Retry-After` / `retryAfterMs` |
 | 4000 (replaced by a newer connection) | **Don't reconnect.** Another tab or device owns the session |
 | 4003 (slow consumer) | Reconnect after a delay; the new snapshot resyncs |
-| 1008 / HTTP 401 (auth, origin) | Don't reconnect; get a new token first |
+| HTTP 401 / 403 (token, origin) | Don't reconnect; get a new token first |
+
+Browsers can't read a failed handshake's HTTP status: every pre-upgrade rejection looks like 1006, so a browser falls back to the jittered backoff above. The React client therefore refreshes its token before `expiresAt` instead of waiting for a 401. The Go test kit and simulator read the status directly.
 
 ### 9.6 Error mapping
 
