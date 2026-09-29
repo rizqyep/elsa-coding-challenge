@@ -116,6 +116,9 @@ test-unit-client: client/node_modules
 test-integration: require-go ## Integration tests against real Redis, PostgreSQL, and Toxiproxy (needs Docker)
 	cd server && $(GO) test -race -tags integration -count=1 -timeout 5m ./...
 
+test-e2e: require-go ## End-to-end and fault tests against the running stack (make up PROFILES=chaos first)
+	cd server && $(GO) test -tags e2e -count=1 -timeout 20m -v ./e2e/
+
 ##@ Contracts and code generation (D13)
 GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas $(wildcard server/internal/*/mocks) client/src/api/schema.ts client/src/protocol/messages.ts
 
@@ -146,4 +149,4 @@ client/node_modules: client/package-lock.json
 require-go:
 	@command -v $(GO) >/dev/null || { echo "Go is not installed. On Fedora: sudo dnf install golang"; exit 1; }
 
-.PHONY: help up migrate down reset scale demo ps logs redis-cli psql chaos-kill chaos-stop chaos-start chaos-redis-latency chaos-redis-down chaos-pg-down chaos-reset check lint lint-server lint-client lint-contracts test-unit test-unit-server test-unit-client test-integration generate check-generated require-go
+.PHONY: help up migrate down reset scale demo ps logs redis-cli psql chaos-kill chaos-stop chaos-start chaos-redis-latency chaos-redis-down chaos-pg-down chaos-reset check lint lint-server lint-client lint-contracts test-unit test-unit-server test-unit-client test-integration test-e2e generate check-generated require-go

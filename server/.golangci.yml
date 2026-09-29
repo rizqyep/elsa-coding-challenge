@@ -2,7 +2,7 @@ version: "2"
 
 run:
   timeout: 5m
-  build-tags: [integration]   # lint integration tests too
+  build-tags: [integration, e2e]   # lint integration and end-to-end tests too
 
 linters:
   default: standard        # errcheck, govet, ineffassign, staticcheck, unused
@@ -11,6 +11,10 @@ linters:
       # Tests read fixtures and contract files from paths they build themselves.
       - path: _test\.go
         linters: [gosec]
+      # The test kit drives Docker with arguments it builds itself, and seeds math/rand so scenarios repeat.
+      - path: testkit/
+        linters: [gosec]
+        text: "G204|G404"
       # The healthcheck probes this process's own HTTP_ADDR; no request data reaches the URL.
       - path: internal/platform/health/probe\.go
         linters: [gosec]

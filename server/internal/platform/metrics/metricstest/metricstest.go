@@ -1,9 +1,11 @@
-// Package metricstest reads /metrics the way Prometheus does, for integration tests.
+// Package metricstest reads /metrics the way Prometheus does, for integration tests and the test kit.
 package metricstest
 
 import (
 	"bufio"
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,25 +28,34 @@ func Scrape(t *testing.T, baseURLs ...string) map[string]float64 {
 		if err != nil {
 			t.Fatal(err)
 		}
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			line := sc.Text()
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			i := strings.LastIndexByte(line, ' ')
-			v, err := strconv.ParseFloat(line[i+1:], 64)
-			if err != nil {
-				t.Fatalf("metrics line %q: %v", line, err)
-			}
-			out[line[:i]] += v
-		}
+		err = Parse(resp.Body, out)
 		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("%s/metrics: %d", u, resp.StatusCode)
 		}
 	}
 	return out
+}
+
+// Parse adds each series in a Prometheus text exposition to into.
+func Parse(r io.Reader, into map[string]float64) error {
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := sc.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		i := strings.LastIndexByte(line, ' ')
+		v, err := strconv.ParseFloat(line[i+1:], 64)
+		if err != nil {
+			return fmt.Errorf("metrics line %q: %w", line, err)
+		}
+		into[line[:i]] += v
+	}
+	return sc.Err()
 }
 
 // AssertBoundedLabels fails if any series carries a per-quiz or per-person label (NFR-29).
