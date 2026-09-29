@@ -1056,29 +1056,31 @@ Goal: **one command to start everything, one to scale it, one to run a simulatio
 cp .env.example .env          # optional; make up does this if .env is missing
 make up                       # build, migrate, seed, start everything, wait until healthy
 open http://localhost:8080    # client (participant + host views)
-make sim SCENARIO=big-room    # run a simulation against the running stack
+make sim SCENARIO=big-room    # run a simulation against the running stack (task-28)
 make down                     # stop (keep data)  |  make reset: stop and delete volumes
 ```
 
-Prerequisites: Docker with Compose v2, and `make`. Go 1.23+ only for running tests or the simulator outside Docker (`make sim` falls back to a container when Go isn't installed).
+Prerequisites: Docker with Compose v2.23+ (for `--wait` on a stack with a one-shot service), and `make`. Go 1.26+ and Node 22+ only for running tests, code generation, or the simulator outside Docker. The first `make up` builds the images (about 4 minutes); later starts take about 20 s.
 
 ### 11.2 Services
 
 | Service | Replicas (default) | Port on host | Notes |
 |---|---|---|---|
-| `nginx` | 1 | **8080** | Serves the built client at `/`, routes `/api` → api, `/ws` → ws. Re-resolves service names every 5 s (Docker DNS resolver + variable upstream) so scaled instances join the rotation; to be confirmed when the config is written. Query strings not logged (D15) |
+| `nginx` | 1 | **8080** (`HTTP_HOST_PORT`) | Serves the built client at `/`, routes `/api` → api, `/ws` → ws. Upstreams use `server … resolve` (nginx 1.27.3+) with Docker's DNS re-read every 5 s, so `make scale` adds and removes instances without a reload (confirmed in task-25: with a static `server` line new gateways got 0 connections). `/ws` uses `least_conn`, since sockets are long-lived. The access log uses `$uri`, so query strings (tokens, D15) are never logged; the error log is `crit` only because error-level lines quote the full request |
 | `api` | 1 | — | |
 | `ws` | 2 | — | `nofile` ulimit 65,536 |
 | `worker` | 2 | — | |
-| `migrate` | one-shot | — | goose up + seed; the Go services start only after it completes successfully |
+| `migrate` | one-shot | — | goose up + seed; the Go services start only after it completes successfully (`service_completed_successfully`) |
 | `redis` | 1 | 6379 (localhost only) | AOF on |
 | `postgres` | 1 | 5432 (localhost only) | named volume |
 | **Optional profiles** | | | |
-| `observability` | Prometheus, Grafana | 9090, 3000 | Grafana comes provisioned with the three dashboards from non-functional §4.5 |
+| `observability` | Prometheus | 9090 | Scrapes every api, ws, and worker instance through Docker DNS, so scaled replicas appear on their own. Grafana and the dashboards from non-functional §4.5 are out of scope under D17 |
 | `replica` | `redis-replica` | — | Also sets `REDIS_WAIT_REPLICAS=1`, to exercise `WAIT` |
 | `chaos` | `toxiproxy` | 8474 (API) | Services reach Redis and PostgreSQL through Toxiproxy, so latency and outages can be injected |
 
-`make up PROFILES="observability chaos"` enables profiles. Everything else works without them.
+`make up PROFILES="observability chaos"` enables profiles. Everything else works without them. `make down` and `make reset` stop every profile's services.
+
+**Healthchecks:** the Go images are distroless (no shell, curl, or wget), so each binary accepts `healthcheck` as its only argument: it GETs its own `/readyz` and exits 0 or 1 (`platform/health`). `make up` returns only when every service reports healthy.
 
 ### 11.3 Make targets
 
@@ -1093,7 +1095,7 @@ Prerequisites: Docker with Compose v2, and `make`. Go 1.23+ only for running tes
 | `make sim SCENARIO=… [overrides]` | Run a simulation scenario (§11.4) |
 | `make k6 SCENARIO=…` | Run a k6 scenario from `loadtest/k6/` |
 | `make chaos-…` | Failure switches (§11.5) |
-| `make demo` | `up`, then create a `demo-quick` quiz and print the host and participant URLs, for the video |
+| `make demo` | `up`, then print the host and player steps for the `demo-quick` set. It doesn't create the quiz: the host's token lives in the browser tab that creates it, so the host starts from the page |
 
 ### 11.4 Simulation control
 
@@ -1141,13 +1143,16 @@ Usable on their own, or as `chaos` steps in a scenario.
 
 | Target | Effect |
 |---|---|
-| `make chaos-kill S=ws-1` | Kill one container (gateway or worker) |
+| `make chaos-kill S=ws-1` | Kill one container (gateway or worker); it stays down until `chaos-start` |
 | `make chaos-stop S=worker` | Stop all instances of a service; `chaos-start` brings them back |
 | `make chaos-redis-latency MS=50` | Add latency between services and Redis (requires the `chaos` profile) |
-| `make chaos-redis-down SEC=5` | Cut Redis off for N seconds, then restore |
+| `make chaos-redis-down SEC=5` | Cut Redis off for N seconds, then restore (requires the `chaos` profile) |
 | `make chaos-pg-down SEC=30` | Pause PostgreSQL for N seconds |
-| `make chaos-slow-client` | Start clients that read slowly, alongside a running simulation |
-| `make chaos-reset` | Remove all injected faults |
+| `make chaos-reset` | Remove all injected faults and bring every service back |
+
+Slow clients are a simulator option (`slowClients` in a scenario, task-28) rather than a separate switch.
+
+Measured in task-25 with the `chaos` profile: +300 ms Redis latency turned a 6 ms quiz create into 305 ms; with Redis cut off, create returned 503 in 1.7 s and 201 again once restored; with PostgreSQL paused, create and question-set reads returned 503 at the 5 s request timeout; with `ws-1` killed, 6 of 6 new connections landed on `ws-2` with no 502s.
 
 ### 11.6 Configuration for demos and simulations
 

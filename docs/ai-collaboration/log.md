@@ -675,3 +675,21 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - its first "finished is terminal" test couldn't fail, which mutation testing exposed, and it was fixed.
 - **A near miss worth noting:** during the click-through, answers appeared that the AI hadn't sent. It checked what the server had recorded (six answers, three unexplained) and reasoned that the client's only answer paths couldn't produce them. It reported that instead of "fixing" the client, and I confirmed they were my own clicks.
 - **Verification:** 31 unit tests and 6 caught deliberate breaks; `tsc`, lint, build and `make check` green; a full browser click-through against the real services (details in the task file), including a reload mid-quiz, a question closing early, one running its full window, archived final standings, phone width, dark theme and keyboard.
+
+### AI-034: The full local stack (task-25)
+
+- **Date / phase:** 2026-09-29 · P5 Stack and verification
+- **My input:** I asked for the full stack next, so a reviewer can start everything locally.
+- **What the AI produced:**
+  - Docker images for the client (Node build, nginx runtime) and a `healthcheck` mode in each Go binary for distroless healthchecks;
+  - the Compose stack with `migrate` as a gating one-shot, profiles for observability, replica and chaos, and make targets for scaling and failure switches;
+  - the nginx config with DNS re-resolution and token-free logs;
+  - a `ws_connections` gauge and a short root README.
+- **How the scaling claim was checked:** the TRD had marked nginx re-resolution "to be confirmed". The AI confirmed it by measurement (10/10/10/10 after scaling to four) and then removed `resolve` on purpose: the new gateways got 0 connections. So the passing result depends on the config, not on luck.
+- **What the AI got wrong, all caught by itself before reporting:**
+  - a token-leak check that couldn't fail: the token variable was empty, so the grep matched nothing meaningful. Redone with a real token;
+  - a false reading that PostgreSQL reads still worked while paused. It was timing: the request started as the pause ended. Rerun: 503;
+  - a smoke script that answered every `question` message, so early-close re-sends looked like server errors. The server was right. It logged the raw messages before touching any code, then fixed the script.
+- **A contract gap the smoke script exposed:** the AsyncAPI contract didn't tell clients that an early close re-sends the same question. That's exactly what an integrator would trip on, so it's now documented on `send_question`.
+- **Verification:** see task-25: a fresh `make reset` + `make up` in 16.8 s, routing, scaling in both directions, all three profiles, every failure switch with before/during/after numbers, a full quiz through nginx on the replica+chaos stack, `make check` and 20/20 integration packages.
+
