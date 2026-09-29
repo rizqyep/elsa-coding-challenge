@@ -409,7 +409,7 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
 
 - **KEYS:** `room`, `lb`, `sched:transitions`
 - **ARGV:** code, caller_id
-- **Steps:** not `lobby` → `{rejected, not_in_lobby}`. Caller ≠ `host_id` → `{rejected, not_host}`. `ZCARD lb = 0` → `{rejected, no_participants}`. Already `start_requested` → `{ok}` (idempotent). Otherwise set `start_requested=1`, `next_at=now`, `ZADD sched:transitions now code`.
+- **Steps** (same order as `quiz.Start`): caller ≠ `host_id` → `{rejected, not_host}`. Not `lobby` → `{rejected, not_in_lobby}`. `ZCARD lb = 0` → `{rejected, no_participants}`. Already `start_requested` → `{ok}` (idempotent). Otherwise set `start_requested=1`, `next_at=now`, `ZADD sched:transitions now code`.
 - **Returns:** `{ok}`
 
 #### `answer`

@@ -60,7 +60,7 @@ test-unit-client: client/node_modules
 	cd client && npm test
 
 test-integration: require-go ## Integration tests against real Redis, PostgreSQL, and Toxiproxy (needs Docker)
-	cd server && $(GO) test -race -tags integration -count=1 -timeout 10m ./...
+	cd server && $(GO) test -race -tags integration -count=1 -timeout 5m ./...
 
 ##@ Contracts and code generation (D13)
 GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas client/src/api/schema.ts client/src/protocol/messages.ts
