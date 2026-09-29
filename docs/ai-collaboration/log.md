@@ -565,3 +565,31 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - 14 mutations caught by test failures in 1–7 s.
   - An in-process measurement: 2 goroutines and at most 33.5 KB per idle connection, server and client together, against the 50 KB budget.
   - `make check` is green.
+
+### AI-030: Gateway registry, room events, and the subscriber (task-19)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:** I asked to continue with task-19 after reviewing task-18, carrying over my stampede concern: a pub/sub reconnect must not turn into one Redis read per connection.
+- **What the AI produced:**
+  - the sharded connection registry and the hub that maps room events to client messages;
+  - one prepared frame per broadcast, and ranks after each close from one read;
+  - per-room snapshot pushes after a reconnect;
+  - a Redis subscriber with its own receive loop;
+  - two read-only Redis scripts (`view`, `standings`);
+  - a server-side schema validator used by every test that receives frames.
+- **What the AI found by reading the library instead of assuming:** go-redis's `Channel()` reconnects and resubscribes silently, hides subscription confirmations, and drops messages if its buffer stays full for a minute. Using it would have left rooms stuck on stale state with nothing triggering a resync. The subscriber therefore owns the connection: it waits for Redis to *confirm* each subscription before a join reads its snapshot, pings quiet connections, and signals each room once its resubscription is confirmed.
+- **Bugs found in earlier, already-committed work (each fixed in its own commit):**
+  - **Early close was invisible to clients.** `answer.lua` moved `close_at` but republished the current state version, so the gateway (and clients, under FR-28's "apply only newer" rule) dropped it as stale. Found by the end-to-end test; the AI traced it by logging the raw events, which showed two events with `"v":2`. Fixed in Go and Lua, with tests in both.
+  - **Answers would fail indefinitely after a Redis restart with `WAIT` enabled.** The pipelined `EVALSHA` can't fall back to `EVAL`. Reproduced with `SCRIPT FLUSH`, then fixed with a reload and one retry.
+  - **The `state` event lacked `next_at`**, which the reveal message needs and gateways can't compute.
+- **What the AI got wrong:**
+  - **An off-by-one in its own subscriber:** a new room's state started at "confirmed in epoch 0", which matched the epoch before the first connect, so `Ensure` could return with nothing subscribed. Caught by the integration tests on the first run.
+  - **A connection-breaking test helper:** a short read deadline used to assert "no rank for the host" killed the gorilla connection (read timeouts are permanent there), and the next assertion failed for the wrong reason.
+  - **Weak tests exposed by mutation testing:** a fake `View` ignored cancellation, a confirmation test ran without latency so an early return couldn't be seen, and nothing checked that a healthy idle connection stays up. All three fixed and re-verified. Four mutants were invalid on the first try and were redone.
+  - **Tooling slips:** placeholder imports left in test files twice (`var _ = …`), a Python edit that failed to parse (and so, correctly, changed nothing), and a doc reference to a config setting that doesn't exist. All corrected before commit.
+  - **Reported as not covered by a test:** per-`SUBSCRIBE` confirmation counting (the interleaving it guards can't be ordered deterministically against a real `PubSub`) and the 500-per-call chunking of `standings`.
+- **Verification:**
+  - Unit tests on fake sockets and fake Redis reads.
+  - Integration tests on real Redis with Toxiproxy: latency, outage, and a half-open connection.
+  - An end-to-end test with real scripts, the question cache over PostgreSQL, and real WebSocket clients, where every frame is validated against its schema.
+  - 21 mutations caught, 3 clean repeated runs, all 16 integration packages, and `make check` green.

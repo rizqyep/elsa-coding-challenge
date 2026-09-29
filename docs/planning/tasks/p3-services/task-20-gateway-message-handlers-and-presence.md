@@ -30,6 +30,10 @@ Written before the implementation and reviewed by me before any code is written 
 
 ## Done when
 
+- [ ] join in the order the task-19 end-to-end test proved: look up the room's question set → `Hub.Enter` (waits for the confirmed subscription) → `join` script → snapshot from the join result via `realtime.BuildSnapshot`; a finished quiz gets its final results instead
+- [ ] join publishes `kick {p, k}` so other gateways close this participant's older connections (FR-12); the hub already handles receiving it
+- [ ] `Handler.Snapshot` → `Hub.Snapshot`, `Handler.Closed` → `Hub.Leave`
+- [ ] `cmd/ws` wires the hub, the subscriber (`Run` in its own goroutine), the session repository, and the question cache
 - [ ] `cmd/ws` runs end to end against Redis
 - [ ] tests pass
 - [ ] `make check` green

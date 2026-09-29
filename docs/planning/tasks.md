@@ -144,7 +144,7 @@ flowchart LR
 | [task-16](tasks/p3-services/task-16-rest-api-service.md) | REST API service | P3 | M | yes | done |
 | [task-17](tasks/p3-services/task-17-question-cache.md) | Question cache | P3 | M | yes | done |
 | [task-18](tasks/p3-services/task-18-gateway-connections.md) | Gateway: connections | P3 | L | yes | done |
-| [task-19](tasks/p3-services/task-19-gateway-registry-and-room-events.md) | Gateway: registry and room events | P3 | L | yes | todo |
+| [task-19](tasks/p3-services/task-19-gateway-registry-and-room-events.md) | Gateway: registry and room events | P3 | L | yes | done |
 | [task-20](tasks/p3-services/task-20-gateway-message-handlers-and-presence.md) | Gateway: message handlers and presence | P3 | M | yes | todo |
 | [task-21](tasks/p3-services/task-21-worker.md) | Worker | P3 | L | yes | todo |
 | [task-22](tasks/p3-services/task-22-shutdown-and-degraded-modes.md) | Shutdown and degraded modes | P3 | M | yes | todo |
