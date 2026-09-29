@@ -12,16 +12,21 @@ import (
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/quiz"
 )
 
-//go:embed scripts/leaderboard.lua
-var leaderboardSrc string
+var (
+	//go:embed scripts/leaderboard.lua
+	leaderboardSrc string
+	//go:embed scripts/page.lua
+	pageSrc string
 
-var leaderboardScript = redisx.NewScript("leaderboard", quiz.TopLua+"\n"+leaderboardSrc)
+	leaderboardScript = redisx.NewScript("leaderboard", quiz.TopLua+"\n"+leaderboardSrc)
+	pageScript        = redisx.NewScript("page", pageSrc)
+)
 
 // ErrNoRoom is returned when the room no longer exists.
 var ErrNoRoom = errors.New("room not found")
 
 // Scripts lists this module's Lua scripts, for loading at startup.
-func Scripts() []*redisx.Script { return []*redisx.Script{leaderboardScript} }
+func Scripts() []*redisx.Script { return []*redisx.Script{leaderboardScript, pageScript} }
 
 // RedisRepository publishes leaderboard snapshots from Redis.
 type RedisRepository struct{ rdb redis.UniversalClient }
@@ -61,4 +66,32 @@ func (r *RedisRepository) PublishSnapshot(ctx context.Context, code quiz.Code) (
 		}
 	}
 	return 0, fmt.Errorf("leaderboard: unexpected reply %v", reply)
+}
+
+// LivePage reads one page of the live leaderboard in a single script, so it is consistent.
+func (r *RedisRepository) LivePage(ctx context.Context, code quiz.Code, offset, limit int) (Page, error) {
+	c := string(code)
+	reply, err := pageScript.Run(ctx, r.rdb, []string{redisx.RoomKey(c), redisx.LeaderboardKey(c), redisx.RosterKey(c)}, offset, limit).Slice()
+	if err != nil {
+		return Page{}, fmt.Errorf("page: %w", err)
+	}
+	if reply[0] == "rejected" {
+		return Page{}, quiz.ErrUnknownQuiz
+	}
+	status, _ := reply[1].(string)
+	count, _ := reply[2].(int64)
+	rows, _ := reply[3].([]any)
+	p := Page{Code: code, Status: quiz.Status(status), ParticipantCount: int(count), Offset: offset, Limit: limit, Entries: make([]Entry, len(rows))}
+	for i, row := range rows {
+		f, ok := row.([]any)
+		if !ok || len(f) != 4 {
+			return Page{}, fmt.Errorf("page: unexpected entry %v", row)
+		}
+		id, _ := f[0].(string)
+		name, _ := f[1].(string)
+		score, _ := f[2].(int64)
+		rank, _ := f[3].(int64)
+		p.Entries[i] = Entry{Rank: int(rank), ParticipantID: quiz.ParticipantID(id), DisplayName: name, Score: int(score)}
+	}
+	return p, nil
 }

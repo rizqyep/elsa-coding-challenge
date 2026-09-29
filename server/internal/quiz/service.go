@@ -132,7 +132,7 @@ func (s *Service) Get(ctx context.Context, code Code) (Summary, error) {
 		return Summary{}, err
 	}
 	return Summary{
-		Code: q.Code, QuestionSetID: q.QuestionSetID, Status: archivedStatus(q.Status), QuestionCount: q.QuestionCount,
+		Code: q.Code, QuestionSetID: q.QuestionSetID, Status: ArchivedStatus(q.Status), QuestionCount: q.QuestionCount,
 		ParticipantCount: q.ParticipantCount, WindowMs: q.WindowMs, RevealMs: q.RevealMs, CreatedAt: q.CreatedAt, FinishedAt: q.FinishedAt,
 	}, nil
 }
@@ -149,9 +149,9 @@ func liveSummary(l LiveRoom) Summary {
 	return s
 }
 
-// archivedStatus maps an archive row to a quiz status. A lobby or running row whose room is gone
+// ArchivedStatus maps an archive row to a quiz status. A lobby or running row whose room is gone
 // never reached the final job, so it ended without results.
-func archivedStatus(s string) Status {
+func ArchivedStatus(s string) Status {
 	if s == ArchiveFinished {
 		return StatusFinished
 	}
