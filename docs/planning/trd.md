@@ -958,29 +958,25 @@ For every unit in TDD scope:
 
 ### 10.3 The test kit
 
-One package drives the system in tests **and** in the simulator, so load scenarios are scenarios the tests have already verified (D14).
+One package (`server/testkit`) drives the running stack in the end-to-end tests **and** in the simulator, so load scenarios are scenarios the tests have already verified (D14).
 
 ```go
-env := testkit.Compose("http://localhost:8080")      // or testkit.InProcess(t) for integration tests
-host := env.Host(t)                                   // host token + REST client
-quiz := host.CreateQuiz(ctx, "demo-quick", testkit.Window(5*time.Second))
-
-room := testkit.Room(quiz).
-    Participants(50).
-    Answers(testkit.Within(2*time.Second), testkit.CorrectRatio(0.7))
-
-res := room.Run(ctx, env, func(r *testkit.Run) {
-    r.At(1*time.Second, host.Start(quiz))
-    r.AtQuestion(1, testkit.KillGateway(0))           // fault steps (ignored when unsupported by env)
-})
-
-res.AssertScoresMatchExpected(t)                     // recompute from submitted answers + server times
-res.AssertLeaderboardVersionsMonotonic(t)
-res.AssertLatencies(t, testkit.NFR6(500*time.Millisecond), testkit.NFR7(100*time.Millisecond))
+env, _ := testkit.NewCompose(ctx, "http://localhost:8080", postgresDSN)
+res, _ := env.RunRoom(ctx, testkit.RoomSpec{
+    QuestionSet: "demo-quick", Participants: 50, JoinRamp: time.Second,
+    Window: 5 * time.Second, Reveal: 2 * time.Second,
+    AnswerWithin: 2 * time.Second, CorrectRatio: 0.7, NoAnswerRatio: 0.1,
+}, testkit.Step{Name: "kill ws-1", Question: 2, After: time.Second,
+    Do: func(ctx context.Context) error { return env.Kill(ctx, "quiz-ws-1") }})
+// res: NFR-6/7/8/9 and transition-lag percentiles, counters, and every mismatch or violation found
 ```
 
-- `testkit.Client`: speaks the documented protocol, validates every received message against its JSON Schema, applies the monotonic-version rules, and records timings.
-- **Expected scores are computed independently** from what the clients sent and the `receivedAt` the server returned, using the Go scoring function. A run proves the whole pipeline scored correctly, not just that it returned numbers.
+- **`Client`** speaks the documented protocol, validates every received message against its JSON Schema, applies the version rules (older versions ignored and counted; "finished" always applies; the same state version must always carry the same event), and records the close code. `Dial` retries a 503 after its `Retry-After`.
+- **`RunRoom`** creates a quiz, joins participants (spread over `JoinRamp`), starts it, and has each participant answer every question at a random point within `AnswerWithin`, right or wrong by `CorrectRatio`, or not at all by `NoAnswerRatio`; `SlowRatio` makes some read slowly. A participant whose connection drops reconnects and resends any unanswered answer with its original request id. Steps (faults) fire at "question N + offset".
+- **Scores are checked independently.** The kit's own copy of the scoring rule (tested against `points_cases.json`) recomputes each answer's points from what the participant sent and the `receivedAt` the server returned, and each participant's total is compared with the archived result in PostgreSQL. The kit reads answer keys from PostgreSQL to choose right and wrong answers: harness access, since clients never see the key before the reveal (FR-21).
+- **What it measures:** NFR-7 as submit → `answer_result` at the client (an upper bound on the server-side figure); NFR-8 as the question's `openedAt` → arrival at each fast client; NFR-9 as join → snapshot; transition lag as the next question's `openedAt` minus the announced `nextTransitionAt`. **NFR-6 is an approximation:** the kit can't see which leaderboard snapshot included which answer, so an answer accepted at *t* counts as covered by the first leaderboard version that began arriving after *t*, and its latency is when that version reached the last fast client.
+- **Scope:** the kit targets the Compose stack only. An in-process environment would need the service wiring moved out of the `main` packages; the `cmd/*` integration tests already exercise that wiring in-process. The API has no per-quiz question count, so scenarios choose a question set rather than a number of questions.
+- **Environment helpers:** REST calls, answer keys, archived totals, `Metrics(service)` (read from inside the Compose network), and faults: `Kill`, `StopService`, `StartAll`, `PausePostgres`, `RedisLatency`, `SetRedisEnabled`, `ResetFaults`.
 
 ### 10.4 Requirement → test mapping (must-haves)
 
