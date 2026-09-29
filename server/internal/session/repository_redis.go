@@ -21,17 +21,22 @@ var (
 	viewSrc string
 	//go:embed scripts/standings.lua
 	standingsSrc string
+	//go:embed scripts/presence.lua
+	presenceSrc string
 
 	joinScript      = redisx.NewScript("join", joinSrc)
 	viewScript      = redisx.NewScript("view", viewSrc)
 	standingsScript = redisx.NewScript("standings", standingsSrc)
+	presenceScript  = redisx.NewScript("presence", presenceSrc)
 )
 
 // standingsChunk caps the participants per standings call, so one call never blocks Redis for long.
 const standingsChunk = 500
 
 // Scripts lists this module's Lua scripts, for loading at startup.
-func Scripts() []*redisx.Script { return []*redisx.Script{joinScript, viewScript, standingsScript} }
+func Scripts() []*redisx.Script {
+	return []*redisx.Script{joinScript, viewScript, standingsScript, presenceScript}
+}
 
 // RedisRepository implements Repository on Redis.
 type RedisRepository struct{ rdb redis.UniversalClient }
@@ -44,8 +49,8 @@ func NewRedisRepository(rdb redis.UniversalClient) *RedisRepository {
 // Join adds or restores the participant and returns their snapshot data.
 func (r *RedisRepository) Join(ctx context.Context, in JoinInput) (JoinResult, error) {
 	c := string(in.Code)
-	keys := []string{redisx.RoomKey(c), redisx.RosterKey(c), redisx.LeaderboardKey(c), redisx.OnlineKey(c), redisx.SchedLeaderboardDirty}
-	reply, err := joinScript.Run(ctx, r.rdb, keys, c, string(in.ParticipantID), in.DisplayName, leaderboard.TopN, int64(in.TTL.Seconds())).Slice()
+	keys := []string{redisx.RoomKey(c), redisx.RosterKey(c), redisx.LeaderboardKey(c), redisx.OnlineKey(c), redisx.SchedLeaderboardDirty, redisx.RoomChannel(c)}
+	reply, err := joinScript.Run(ctx, r.rdb, keys, c, string(in.ParticipantID), in.DisplayName, leaderboard.TopN, int64(in.TTL.Seconds()), in.ConnID).Slice()
 	if err != nil {
 		return JoinResult{}, fmt.Errorf("join: %w", err)
 	}
@@ -222,4 +227,21 @@ func pairs(v any) map[string]string {
 		m[fmt.Sprint(flat[i])] = fmt.Sprint(flat[i+1])
 	}
 	return m
+}
+
+// RefreshPresence marks participants online at Redis TIME, in chunks so no call blocks Redis for long (TRD §7.7).
+func (r *RedisRepository) RefreshPresence(ctx context.Context, code quiz.Code, ids []quiz.ParticipantID) error {
+	c := string(code)
+	keys := []string{redisx.RoomKey(c), redisx.OnlineKey(c)}
+	for start := 0; start < len(ids); start += standingsChunk {
+		chunk := ids[start:min(start+standingsChunk, len(ids))]
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = string(id)
+		}
+		if err := presenceScript.Run(ctx, r.rdb, keys, args...).Err(); err != nil {
+			return fmt.Errorf("presence: %w", err)
+		}
+	}
+	return nil
 }

@@ -18,6 +18,7 @@ type JoinInput struct {
 	Code          quiz.Code
 	ParticipantID quiz.ParticipantID
 	DisplayName   string
+	ConnID        string // published in a kick so other gateways close older connections (FR-12)
 	TTL           time.Duration
 }
 
