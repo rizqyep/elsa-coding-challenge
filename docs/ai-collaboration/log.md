@@ -651,3 +651,27 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - an integration test in which **two workers run a whole quiz on their own**: early closes, about 1 s for three 5 s questions, every state version published exactly once, leaderboard updates, answers and results saved, room released, liveness 200;
   - 16 deliberate breaks, all caught;
   - `make check` and all 19 integration packages green, with logs saved.
+
+### AI-033: The React client (task-24)
+
+- **Date / phase:** 2026-09-29 · P4 Client
+- **My input:**
+  - I asked for the client next, leaving the supporting tasks for later.
+  - When asked about design direction I said no fancy design is needed, only a working client.
+  - When the browser extension wasn't available, I pointed to the Playwright tools.
+  - During the click-through I answered as a player in the visible browser window myself.
+- **What the AI produced:**
+  - a pure room reducer with per-field version rules;
+  - a WebSocket client that rejoins on every connect, resends unanswered answers with their original ids, follows the close-code policy and tracks the clock offset;
+  - a REST client typed from the generated OpenAPI schema, with per-tab identity and token renewal;
+  - the participant and host screens, with loading, empty, error, reconnecting and replaced states;
+  - the Vite dev proxy.
+- **How the UI was held to a standard:** the AI loaded its UI rules before building and asked when to apply them and what the direction was. With my answer it built a labelled "draft without direction" at the calm default dials, instead of inventing a style.
+- **What the AI got wrong:**
+  - it wrote one test file outside the repository (moved, and the stray folder removed);
+  - it used constructor parameter properties, which the TypeScript config forbids;
+  - it read `id` from messages that don't all carry one;
+  - it assumed a generated request type would leave defaulted fields optional;
+  - its first "finished is terminal" test couldn't fail, which mutation testing exposed, and it was fixed.
+- **A near miss worth noting:** during the click-through, answers appeared that the AI hadn't sent. It checked what the server had recorded (six answers, three unexplained) and reasoned that the client's only answer paths couldn't produce them. It reported that instead of "fixing" the client, and I confirmed they were my own clicks.
+- **Verification:** 31 unit tests and 6 caught deliberate breaks; `tsc`, lint, build and `make check` green; a full browser click-through against the real services (details in the task file), including a reload mid-quiz, a question closing early, one running its full window, archived final standings, phone width, dark theme and keyboard.
