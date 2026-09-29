@@ -1,0 +1,117 @@
+{
+  "description": "Speed-bonus scoring vectors (FR-19, TRD \u00a73.4-3.5). Shared by the Go unit tests (task-07) and the Lua answer-script tests (task-12): edit here, never copy. Times are epoch milliseconds; points = correct ? 100 + floor(100 * clamp(deadline - receivedAt, 0, window) / window) : 0, where window = deadline - openedAt.",
+  "cases": [
+    {
+      "name": "correct at the instant the question opens: full bonus",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000000000,
+      "points": 200
+    },
+    {
+      "name": "correct 1 ms after opening: bonus floors to 99",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000000001,
+      "points": 199
+    },
+    {
+      "name": "correct 2.1 s into a 15 s window (the contract example)",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000002100,
+      "points": 186
+    },
+    {
+      "name": "correct halfway through the window",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000007500,
+      "points": 150
+    },
+    {
+      "name": "correct 1 ms before the deadline: bonus floors to 0",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000014999,
+      "points": 100
+    },
+    {
+      "name": "correct exactly at the deadline: no bonus (acceptance rejects it anyway)",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000015000,
+      "points": 100
+    },
+    {
+      "name": "received after the deadline: remaining clamps to 0",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000015500,
+      "points": 100
+    },
+    {
+      "name": "received before opening (clock anomaly): remaining clamps to the window",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1789999999995,
+      "points": 200
+    },
+    {
+      "name": "wrong answer at opening scores 0",
+      "correct": false,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000000000,
+      "points": 0
+    },
+    {
+      "name": "wrong answer late scores 0",
+      "correct": false,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000014999,
+      "points": 0
+    },
+    {
+      "name": "shortest window (5 s), halfway",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000005000,
+      "receivedAt": 1790000002500,
+      "points": 150
+    },
+    {
+      "name": "longest window (120 s), 1 ms after opening",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000120000,
+      "receivedAt": 1790000000001,
+      "points": 199
+    },
+    {
+      "name": "non-integer bonus floors: 2/3 of a 3 s window left",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000003000,
+      "receivedAt": 1790000001000,
+      "points": 166
+    },
+    {
+      "name": "bonus uses the original deadline even after an early close at +4 s",
+      "correct": true,
+      "openedAt": 1790000000000,
+      "deadline": 1790000015000,
+      "receivedAt": 1790000003000,
+      "points": 180
+    }
+  ]
+}
