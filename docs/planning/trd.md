@@ -363,7 +363,7 @@ Not part of the client contract. They're decoded only by gateways, which ignore 
 
 | `t` | Fields | Published by |
 |---|---|---|
-| `state` | `v` state version, `s` status, `i` index, `n` question count, `q` question ID, `o` opened_at, `d` deadline, `c` close_at | transition, answer (on early close, so countdowns update) |
+| `state` | `v` state version, `s` status, `i` index, `n` question count, `q` question ID, `o` opened_at, `d` deadline, `c` close_at, `x` next_at (0 once terminal). Gateways need `x` for `question_closed.nextTransitionAt`: the reveal is timed from the actual transition, so they can't compute it | transition, answer (on early close, so countdowns update) |
 | `lb` | `v` leaderboard version, `n` participant count, `top` `[[id, name, score], …]` | leaderboard snapshot |
 | `finished` | `v`, `n`, `top` (final top N) | transition (to `finished`) |
 | `kick` | `p` participant ID, `k` connection ID to keep | gateway, when an identity reconnects elsewhere (FR-12) |

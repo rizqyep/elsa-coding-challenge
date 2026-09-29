@@ -140,7 +140,7 @@ func TestTransition_OpensTheFirstQuestionAndAnnouncesIt(t *testing.T) {
 		t.Errorf("next transition scheduled at %v, want the deadline %d", s, rec.Deadline)
 	}
 	ev := next()
-	if ev["t"] != "state" || ev["s"] != "question_open" || ev["q"] != "dq-01" || ev["v"] != 2.0 || ev["c"] != float64(rec.CloseAt) || ev["n"] != 2.0 {
+	if ev["t"] != "state" || ev["s"] != "question_open" || ev["q"] != "dq-01" || ev["v"] != 2.0 || ev["c"] != float64(rec.CloseAt) || ev["n"] != 2.0 || ev["x"] != float64(rec.NextTransitionAt) {
 		t.Errorf("event %v", ev)
 	}
 }
@@ -183,7 +183,8 @@ func TestTransition_CloseQueuesTheFlushAndMarksTheLeaderboard(t *testing.T) {
 	if !env.Redis.SIsMember(ctx, redisx.SchedLeaderboardDirty, k).Val() {
 		t.Error("leaderboard not marked dirty at close")
 	}
-	if ev := next(); ev["s"] != "question_closed" || ev["q"] != "dq-01" {
+	// x carries the reveal's end, which gateways need for question_closed and can't compute.
+	if ev := next(); ev["s"] != "question_closed" || ev["q"] != "dq-01" || ev["x"] != float64(rec.NextTransitionAt) {
 		t.Errorf("event %v", ev)
 	}
 }

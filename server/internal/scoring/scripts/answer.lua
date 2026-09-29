@@ -28,6 +28,6 @@ if online > 0 and redis.call('HLEN', KEYS[2]) >= online then
   redis.call('HSET', KEYS[1], 'close_at', now, 'next_at', now)
   redis.call('ZADD', KEYS[7], now, ARGV[1])
   redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'state', v = tonumber(r[6]), s = 'question_open',
-    i = tonumber(r[7]), n = tonumber(r[8]), q = r[2], o = tonumber(r[4]), d = tonumber(r[5]), c = now}))
+    i = tonumber(r[7]), n = tonumber(r[8]), q = r[2], o = tonumber(r[4]), d = tonumber(r[5]), c = now, x = now}))
 end
 return {'accepted', ARGV[4], correct and 1 or 0, p, total, now}

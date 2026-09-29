@@ -275,11 +275,12 @@ func TestRecordAnswer_EarlyCloseWhenEveryoneOnlineAnswered(t *testing.T) {
 		Q string `json:"q"`
 		C int64  `json:"c"`
 		D int64  `json:"d"`
+		X int64  `json:"x"`
 	}
 	if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
 		t.Fatalf("event %q: %v", msg.Payload, err)
 	}
-	if ev.T != "state" || ev.S != "question_open" || ev.Q != "dq-01" || ev.C != last.ReceivedAt || ev.D != r.deadline {
+	if ev.T != "state" || ev.S != "question_open" || ev.Q != "dq-01" || ev.C != last.ReceivedAt || ev.D != r.deadline || ev.X != last.ReceivedAt {
 		t.Errorf("event %+v", ev)
 	}
 }

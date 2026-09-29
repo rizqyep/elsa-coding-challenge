@@ -42,6 +42,6 @@ if ev == 'quiz_finished' then
   redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'finished', v = r.state_ver, n = count, top = entries}))
 else
   redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'state', v = r.state_ver, s = r.status, i = r.q_index,
-    n = r.q_count, q = qid, o = r.opened_at, d = r.deadline, c = r.close_at}))
+    n = r.q_count, q = qid, o = r.opened_at, d = r.deadline, c = r.close_at, x = r.next_at}))
 end
 return {'applied', r.status, r.state_ver}
