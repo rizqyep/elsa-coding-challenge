@@ -58,6 +58,7 @@ type Gateway struct {
 	RatePerSec           int
 	RateBurst            int
 	JoinAdmissionPerSec  int
+	MaxConnections       int
 	RegistryShards       int
 	PresenceRefresh      time.Duration
 	PresenceTTL          time.Duration
@@ -106,6 +107,7 @@ func LoadGateway(l Lookup) (Gateway, error) {
 		RatePerSec:           p.atLeast("WS_RATE_PER_SEC", 20, 1),
 		RateBurst:            p.atLeast("WS_RATE_BURST", 40, 1),
 		JoinAdmissionPerSec:  p.atLeast("WS_JOIN_ADMISSION_PER_SEC", 500, 1),
+		MaxConnections:       p.atLeast("WS_MAX_CONNECTIONS", 20000, 1),
 		RegistryShards:       p.atLeast("REGISTRY_SHARDS", 64, 1),
 		PresenceRefresh:      p.positive("PRESENCE_REFRESH", 10*time.Second),
 		PresenceTTL:          p.positive("PRESENCE_TTL", 30*time.Second),

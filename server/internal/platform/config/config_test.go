@@ -69,6 +69,7 @@ func TestLoadGateway_DefaultsMatchTRD(t *testing.T) {
 		RatePerSec:           20,
 		RateBurst:            40,
 		JoinAdmissionPerSec:  500,
+		MaxConnections:       20000,
 		RegistryShards:       64,
 		PresenceRefresh:      10 * time.Second,
 		PresenceTTL:          30 * time.Second,
@@ -165,6 +166,7 @@ func TestLoad_RejectsInvalidValues(t *testing.T) {
 		{gw, "WS_PONG_TIMEOUT", "20s"}, // must exceed WS_PING_INTERVAL (25s)
 		{gw, "PRESENCE_TTL", "10s"},    // must exceed PRESENCE_REFRESH (10s)
 		{gw, "WS_SEND_QUEUE_SIZE", "0"},
+		{gw, "WS_MAX_CONNECTIONS", "0"},
 		{gw, "REGISTRY_SHARDS", "0"},
 		{gw, "WS_MAX_MESSAGE_BYTES", "0"},
 		{gw, "WS_ALLOWED_ORIGINS", ""},
