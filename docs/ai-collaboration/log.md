@@ -457,3 +457,19 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - **Removing the due check**, now the only mechanism, is caught. The failure shows the exact bug it prevents: two workers apply back to back, and a question closes and the next opens immediately, **skipping the reveal**.
   - Counting `pending_flush` on every call (1 → 22) and publishing events when nothing is due (20 events instead of 1) are also caught.
   - `make check` and `make test-integration` green.
+
+### AI-026: Persistence jobs (task-14), completing P2
+
+- **Date / phase:** 2026-09-29 · P2 Redis scripts
+- **My input:** I reviewed the task-13 code, re-ran the tests to look for flakiness (none found), and asked to continue.
+- **What the AI produced:** the `history` module: job parsing, `LiveStore`/`Store` interfaces with Redis and PostgreSQL implementations and gomock mocks, the `claim`/`flush_ack`/`release` scripts, and `Service.Process` for flush and final jobs.
+- **Catches:**
+  - The AI's first draft of a service test contained a nonsensical rank assertion (a slice compared to an array inside a meaningless boolean). Rewritten before running.
+  - It removed a leftover no-op line from a test.
+  - **A mutation revealed a test that could hang:** with claimed jobs not hidden, the competing-workers test looped for 190 s until Go's timeout killed it. The AI bounded the loop so the same bug now fails in about 7 s with a clear message, and checked the other polling loops for the same risk.
+- **Verification:**
+  - Unit tests enforce the order save → acknowledge with `gomock.InOrder`, and assert a failed save is never acknowledged.
+  - Integration tests use **real failures**: PostgreSQL cut off through Toxiproxy mid-flush (answers stay in Redis, the retry saves them), and a simulated crash between commit and acknowledgement (no duplicate rows).
+  - End-to-end finalisation reconciles with 0 mismatches.
+  - Four mutations, all caught: `pending_flush` going negative, acknowledging after a failed save, claims not hidden, finalising before flushes.
+  - `make check` and `make test-integration` green.
