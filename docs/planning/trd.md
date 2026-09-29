@@ -138,6 +138,7 @@ All configuration comes from environment variables, parsed and validated at star
 | `SHUTDOWN_TIMEOUT` | `30s` | Drain budget (NFR-16) |
 | `DB_RETRY_BASE` / `DB_RETRY_MAX` / `DB_RETRY_BUDGET` | `100ms` / `5s` / `10s` | Question-set load retries (non-functional §3.1) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Tracing off when unset |
+| `QUIZ_DATA_TTL` | `24h` | Safety-net TTL on room keys (NFR-18): set by the API at creation, refreshed by gateway joins and worker flushes |
 
 ### 2.2 REST API
 
@@ -175,7 +176,6 @@ All configuration comes from environment variables, parsed and validated at star
 | `SCHED_FLUSH_POLL` | `1s` | |
 | `SCHED_CLAIM_BATCH` | `100` | Max items claimed per poll |
 | `FLUSH_VISIBILITY_TIMEOUT` | `30s` | A claimed job becomes due again after this |
-| `QUIZ_DATA_TTL` | `24h` | Safety-net TTL on room keys (NFR-18) |
 
 ---
 

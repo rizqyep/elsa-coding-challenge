@@ -31,6 +31,7 @@ type Common struct {
 	ShutdownTimeout time.Duration
 	DBRetry         retry.Policy
 	OTLPEndpoint    string
+	QuizDataTTL     time.Duration
 }
 
 // API is the REST API's configuration (TRD §2.2).
@@ -73,7 +74,6 @@ type Worker struct {
 	FlushPoll              time.Duration
 	ClaimBatch             int
 	FlushVisibilityTimeout time.Duration
-	QuizDataTTL            time.Duration
 }
 
 // LoadAPI loads and validates the REST API's configuration, reporting every problem at once.
@@ -132,7 +132,6 @@ func LoadWorker(l Lookup) (Worker, error) {
 		FlushPoll:              p.positive("SCHED_FLUSH_POLL", time.Second),
 		ClaimBatch:             p.atLeast("SCHED_CLAIM_BATCH", 100, 1),
 		FlushVisibilityTimeout: p.positive("FLUSH_VISIBILITY_TIMEOUT", 30*time.Second),
-		QuizDataTTL:            p.positive("QUIZ_DATA_TTL", 24*time.Hour),
 	}
 	return c, p.err()
 }
@@ -192,6 +191,7 @@ func (p *parser) common() Common {
 			Budget: p.positive("DB_RETRY_BUDGET", 10*time.Second),
 		},
 		OTLPEndpoint: p.str("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+		QuizDataTTL:  p.positive("QUIZ_DATA_TTL", 24*time.Hour),
 	}
 	if n := len(c.AuthSigningKey); n > 0 && n < 32 {
 		p.problem("AUTH_SIGNING_KEY", "must be at least 32 bytes (got %d)", n)

@@ -94,7 +94,6 @@ func TestLoadWorker_DefaultsMatchTRD(t *testing.T) {
 		FlushPoll:              time.Second,
 		ClaimBatch:             100,
 		FlushVisibilityTimeout: 30 * time.Second,
-		QuizDataTTL:            24 * time.Hour,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("got %+v\nwant %+v", cfg, want)
@@ -114,6 +113,7 @@ func checkCommonDefaults(t *testing.T, c config.Common) {
 		ShutdownTimeout: 30 * time.Second,
 		DBRetry:         retry.Policy{Base: 100 * time.Millisecond, Cap: 5 * time.Second, Budget: 10 * time.Second},
 		OTLPEndpoint:    "",
+		QuizDataTTL:     24 * time.Hour,
 	}
 	if !reflect.DeepEqual(c, want) {
 		t.Errorf("common: got %+v\nwant %+v", c, want)
