@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "rank",
+  "title": "RankMessage",
   "description": "The participant's own rank, sent once after each question closes (FR-26).",
   "type": "object",
   "additionalProperties": false,

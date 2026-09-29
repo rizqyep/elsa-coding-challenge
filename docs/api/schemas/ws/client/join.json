@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "join",
+  "title": "JoinMessage",
   "description": "Participant joins a quiz. One quiz per connection. Reply: snapshot (or error), with the same id.",
   "type": "object",
   "additionalProperties": false,

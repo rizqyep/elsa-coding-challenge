@@ -1,0 +1,9 @@
+# Generates Go types and a strict net/http server interface from docs/api/openapi.yaml (D13).
+# Run via `make generate`; the output is committed.
+package: gen
+output: gen/api.gen.go
+generate:
+  models: true
+  std-http-server: true
+  strict-server: true
+  embedded-spec: true

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "answer_result",
+  "title": "AnswerResultMessage",
   "description": "Reply to submit_answer. status=duplicate returns the originally stored result (FR-18).",
   "type": "object",
   "additionalProperties": false,

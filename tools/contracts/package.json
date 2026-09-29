@@ -1,0 +1,19 @@
+{
+  "name": "quiz-contract-tools",
+  "private": true,
+  "description": "Code generation and validation for docs/api (D13). Kept apart from the client so generator dependencies (e.g. TypeScript 5 for openapi-typescript) don't constrain it.",
+  "type": "module",
+  "scripts": {
+    "gen:api": "openapi-typescript ../../docs/api/openapi.yaml -o",
+    "gen:protocol": "node gen-protocol.mjs",
+    "lint:openapi": "redocly lint --config ../../docs/api/redocly.yaml ../../docs/api/openapi.yaml",
+    "lint:asyncapi": "node validate-asyncapi.mjs"
+  },
+  "devDependencies": {
+    "@asyncapi/parser": "^3.6.3",
+    "@redocly/cli": "^2.55.0",
+    "json-schema-to-typescript": "^16.0.0",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

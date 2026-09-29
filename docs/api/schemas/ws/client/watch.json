@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "watch",
+  "title": "WatchMessage",
   "description": "Host watches their quiz without playing. Host token only. Reply: snapshot.",
   "type": "object",
   "additionalProperties": false,

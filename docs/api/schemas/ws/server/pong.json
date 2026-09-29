@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "pong",
+  "title": "PongMessage",
   "description": "Reply to ping; serverTime lets the client estimate its clock offset for countdowns.",
   "type": "object",
   "additionalProperties": false,

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "error",
+  "title": "ErrorMessage",
   "description": "A request failed, or a connection-level problem. Carries the request id when it answers a request.",
   "type": "object",
   "additionalProperties": false,

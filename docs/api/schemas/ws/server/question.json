@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "question",
+  "title": "QuestionMessage",
   "description": "A question opened, or its close time moved earlier (early close). Idempotent by questionId: replace what is shown.",
   "type": "object",
   "additionalProperties": false,

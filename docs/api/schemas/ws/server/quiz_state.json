@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "quiz_state",
+  "title": "QuizStateMessage",
   "description": "A lifecycle change with no question attached, e.g. the lobby expired.",
   "type": "object",
   "additionalProperties": false,

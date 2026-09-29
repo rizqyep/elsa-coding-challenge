@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "snapshot",
+  "title": "SnapshotMessage",
   "description": "Full view of the room. Sent in reply to join/watch, and to resync a client (reconnect, slow client). Apply field by field, only where versions are newer (FR-28).",
   "type": "object",
   "additionalProperties": false,

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "leaderboard",
+  "title": "LeaderboardMessage",
   "description": "Live leaderboard; identical bytes for everyone in the room (FR-26, NFR-5c).",
   "type": "object",
   "additionalProperties": false,
