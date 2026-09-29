@@ -721,3 +721,12 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Where the AI narrowed the plan, and said so:** no in-process environment (the wiring lives in `main` packages, and the `cmd` integration tests already cover it); scenarios choose a question set because the API has no question count; NFR-6 is an approximation because the kit can't see which snapshot included which answer. All three are written in TRD §10.3.
 - **What the AI got wrong, caught before committing:** a guessed database column for answer keys (`options.is_correct` instead of `questions.correct_option_id`), fixed after reading the schema; a test that expected one violation where the client correctly found two (the fake frame also reused a version).
 - **Verification:** unit tests first; a live 30-player quiz where every answer's points and every archived total matched the recomputation; then the kit's formula was broken on purpose and the same run failed with per-answer mismatches, showing the check can fail. `make check` green.
+
+### AI-038: End-to-end and fault tests (task-27)
+
+- **Date / phase:** 2026-09-30 · P5 Stack and verification
+- **What the AI produced:** the six end-to-end rows of TRD §10.4 and the seven fault scenarios of §10.6, running against the real stack through the test kit, with Toxiproxy and container kills; `make test-e2e`.
+- **How a pass was made to mean something:** a fault that silently didn't happen would also pass. For each scenario the AI read the run's own evidence (latency jump, `server_busy` counts, duplicates returned, 1006 closes and reconnects) before calling it a pass, and wrote down the two faults whose only check is that totals still match.
+- **What the AI added beyond the plan:** a check that no answer is accepted at or after its question's close time, including an explicit late answer while every worker is stopped. This is the case where the answer script alone has to enforce the deadline.
+- **What it didn't claim:** the kick test goes through nginx, so it can't force two gateways; the worker-kill run can't prove it hit mid-flush. Both point to the lower-level tests that do pin those paths.
+- **Verification:** 13/13 in 305 s; every room with 0 violations, 0 point or total mismatches, and reconciliation 0. `make check` green.
