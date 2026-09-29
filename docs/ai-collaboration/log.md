@@ -441,3 +441,19 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - The TRD claimed otherwise and was corrected. Whether to keep the check was raised as a design question for me.
 - **Mutation coverage mapped instead of assumed:** removing the answer deadline check passed the race test, because that gap is ~1 ms wide, but failed task-12's dedicated late-answer test. The AI confirmed the property is covered and recorded which test covers it.
 - **Verification:** Lua `next_state` passes all 14 shared vectors; exactly one of 20 workers applies a transition; the race test's invariants (accepted before close, stored = accepted, leaderboard = accepted points) hold. `make check` and `make test-integration` green.
+
+### AI-025: Removing the version check and tightening the transition tests
+
+- **Date / phase:** 2026-09-29 · P2 Redis scripts
+- **My decision:** "unnecessary implementation for now, but let's tighten the test as well, add more edge cases to see how it behaves under certain cases."
+- **What the AI did:**
+  - Removed the expected-version check from the script, the Go API, and six docs.
+  - Replaced the two version-based tests with edge-case tests that pin the real mechanism, the atomic due check, **at every stage** of a quiz, plus seven behaviour cases: repeated applies, schedule consistency, early close, worker downtime, start versus expiry, independent rooms, and concurrent snapshots.
+- **Catches:**
+  - One new expectation was wrong: at the finish stage the losing workers see `terminal`, not `not_due`. The AI fixed the test after confirming the code's behaviour was the correct one.
+  - A zsh glob quirk broke a diagram re-render step; it was rerun under bash, with all 8 diagrams re-rendered.
+- **Verification:**
+  - All new tests pass.
+  - **Removing the due check**, now the only mechanism, is caught. The failure shows the exact bug it prevents: two workers apply back to back, and a question closes and the next opens immediately, **skipping the reveal**.
+  - Counting `pending_flush` on every call (1 → 22) and publishing events when nothing is due (20 events instead of 1) are also caught.
+  - `make check` and `make test-integration` green.
