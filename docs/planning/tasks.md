@@ -139,7 +139,7 @@ flowchart LR
 | [task-11](tasks/p2-redis-scripts/task-11-scripts-create-room-start-join.md) | Scripts: `create_room`, `start`, `join` | P2 | M | yes | done |
 | [task-12](tasks/p2-redis-scripts/task-12-script-answer.md) | Script: `answer` | P2 | L | yes | done |
 | [task-13](tasks/p2-redis-scripts/task-13-scripts-transition-leaderboard.md) | Scripts: `transition`, `leaderboard` | P2 | L | yes | done |
-| [task-14](tasks/p2-redis-scripts/task-14-flush-scripts-and-postgresql-repositories.md) | Flush scripts and PostgreSQL repositories | P2 | M | yes | todo |
+| [task-14](tasks/p2-redis-scripts/task-14-flush-scripts-and-postgresql-repositories.md) | Flush scripts and PostgreSQL repositories | P2 | M | yes | done |
 | [task-15](tasks/p3-services/task-15-auth.md) | Auth | P3 | S | yes | todo |
 | [task-16](tasks/p3-services/task-16-rest-api-service.md) | REST API service | P3 | M | yes | todo |
 | [task-17](tasks/p3-services/task-17-question-cache.md) | Question cache | P3 | M | yes | todo |
