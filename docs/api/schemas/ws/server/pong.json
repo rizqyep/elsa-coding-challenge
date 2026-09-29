@@ -17,6 +17,9 @@
     "type": {
       "const": "pong"
     },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    },
     "data": {
       "type": "object",
       "additionalProperties": false,

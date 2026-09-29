@@ -196,6 +196,10 @@ export interface PongMessage {
    */
   v: 1
   type: 'pong'
+  /**
+   * Client-generated; echoed in the reply.
+   */
+  id?: string
   data: {
     clientTime: number
     serverTime: number
