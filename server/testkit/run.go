@@ -25,7 +25,11 @@ type RoomSpec struct {
 	SlowRatio     float64       // share of participants that read slowly
 	SlowReadDelay time.Duration // their pause before each read; 200 ms when zero
 	Seed          uint64
+	Live          *Live // optional counters updated while the run is in progress
 }
+
+// Live counts progress while rooms run, for a live summary; share one across rooms.
+type Live struct{ Joined, Answers, Accepted, Errors, Finished atomic.Int64 }
 
 // Step is a timed action during a run, such as a fault. Question 0 anchors it to the start.
 type Step struct {
@@ -40,6 +44,8 @@ type Result struct {
 	Code                                  string
 	Participants, Joined, Finished        int
 	NFR6, NFR7, NFR8, NFR9, TransitionLag Summary
+	Rejoin                                Summary // dropped connection → next snapshot
+	Raw                                   Recorders
 	AnswersSent, Accepted, Duplicates     int64
 	Reconnects                            int64
 	Stale                                 int
@@ -49,6 +55,9 @@ type Result struct {
 	TotalMismatches, StepErrors           []string
 	Elapsed                               time.Duration
 }
+
+// Recorders are a run's raw latencies, for merging percentiles across rooms.
+type Recorders struct{ NFR6, NFR7, NFR8, NFR9, TransitionLag, Rejoin *Recorder }
 
 // OK reports whether nothing went wrong that a correct system would never do.
 func (r *Result) OK() bool {
@@ -68,6 +77,7 @@ type run struct {
 	nfr8    Recorder
 	nfr9    Recorder
 	lag     Recorder
+	rejoin  Recorder
 	mu      sync.Mutex
 	errs    map[string]int
 	closes  map[int]int
@@ -84,6 +94,12 @@ type run struct {
 }
 
 const maxNotes = 20
+
+func (r *run) live(f func(*Live)) {
+	if r.spec.Live != nil {
+		f(r.spec.Live)
+	}
+}
 
 func (r *run) note(list *[]string, s string) {
 	r.mu.Lock()
@@ -178,11 +194,12 @@ start:
 		NFR7: r.nfr7.Summary(), NFR8: r.nfr8.Summary(), NFR9: r.nfr9.Summary(), TransitionLag: r.lag.Summary(),
 		AnswersSent: r.sent.Load(), Accepted: r.accepts.Load(), Duplicates: r.dups.Load(), Reconnects: r.reconn.Load(),
 		Stale: int(r.stale.Load()), Errors: r.errs, Closes: r.closes, Violations: r.notes, PointMismatches: r.points}
-	var nfr6 Recorder
+	nfr6 := &Recorder{}
 	for _, d := range leaderboardLatencies(r.nfr6, r.lbSeen) {
 		nfr6.Add(d)
 	}
-	res.NFR6 = nfr6.Summary()
+	res.NFR6, res.Rejoin = nfr6.Summary(), r.rejoin.Summary()
+	res.Raw = Recorders{NFR6: nfr6, NFR7: &r.nfr7, NFR8: &r.nfr8, NFR9: &r.nfr9, TransitionLag: &r.lag, Rejoin: &r.rejoin}
 	stepMu.Lock()
 	res.StepErrors = stepErrs
 	stepMu.Unlock()
@@ -259,7 +276,7 @@ func (w *watcher) loop(ctx context.Context) {
 	}
 }
 
-type qinfo struct{ openedAt, deadline int64 }
+type qinfo struct{ openedAt, deadline, closeAt int64 }
 
 type pendingAnswer struct {
 	qid, option string
@@ -279,6 +296,7 @@ type player struct {
 	mu        sync.Mutex
 	c         *Client
 	joinSent  time.Time
+	droppedAt time.Time // when the last connection dropped, until the next snapshot
 	finished  bool
 	questions map[string]qinfo
 	decided   map[string]bool
@@ -336,6 +354,9 @@ func (p *player) loop(ctx context.Context, delay time.Duration) {
 			return
 		}
 		p.r.reconn.Add(1)
+		p.mu.Lock()
+		p.droppedAt = time.Now()
+		p.mu.Unlock()
 		time.Sleep(time.Duration(100+p.rng.IntN(500)) * time.Millisecond)
 	}
 }
@@ -346,9 +367,14 @@ func (p *player) onMessage(m Message) {
 	switch m.Type {
 	case "snapshot":
 		p.r.nfr9.Add(m.At.Sub(p.joinSent))
+		if !p.droppedAt.IsZero() {
+			p.r.rejoin.Add(m.At.Sub(p.droppedAt))
+			p.droppedAt = time.Time{}
+		}
 		if !p.joined {
 			p.joined = true
 			p.r.joined.Add(1)
+			p.r.live(func(l *Live) { l.Joined.Add(1) })
 		}
 		if q, ok := m.Data["quiz"].(map[string]any); ok && q["status"] == "finished" {
 			p.finish()
@@ -369,6 +395,7 @@ func (p *player) onMessage(m Message) {
 		p.r.mu.Lock()
 		p.r.errs[code]++
 		p.r.mu.Unlock()
+		p.r.live(func(l *Live) { l.Errors.Add(1) })
 		a, ok := p.pending[m.ID]
 		if !ok {
 			return
@@ -399,10 +426,14 @@ func (p *player) onMessage(m Message) {
 func (p *player) question(q map[string]any, arrived time.Time, live bool) {
 	id := q["questionId"].(string)
 	if p.decided[id] {
-		return // an early close re-sends it with an earlier closeAt (asyncapi send_question)
+		if info, ok := p.questions[id]; ok { // an early close re-sends it with an earlier closeAt (asyncapi send_question)
+			info.closeAt = min(info.closeAt, num(q["closeAt"]))
+			p.questions[id] = info
+		}
+		return
 	}
 	p.decided[id] = true
-	info := qinfo{openedAt: num(q["openedAt"]), deadline: num(q["deadline"])}
+	info := qinfo{openedAt: num(q["openedAt"]), deadline: num(q["deadline"]), closeAt: num(q["closeAt"])}
 	p.questions[id] = info
 	if live && !p.slow {
 		p.r.nfr8.Add(arrived.Sub(time.UnixMilli(info.openedAt)))
@@ -428,6 +459,7 @@ func (p *player) question(q map[string]any, arrived time.Time, live bool) {
 		reqID, err := p.c.Send("submit_answer", map[string]any{"questionId": id, "optionId": choice})
 		p.pending[reqID] = pendingAnswer{qid: id, option: choice, sentAt: time.Now()}
 		p.r.sent.Add(1)
+		p.r.live(func(l *Live) { l.Answers.Add(1) })
 		_ = err // a failed send stays pending and is resent after the rejoin
 	})
 }
@@ -443,6 +475,7 @@ func (p *player) result(m Message) {
 		p.r.dups.Add(1)
 	} else {
 		p.r.accepts.Add(1)
+		p.r.live(func(l *Live) { l.Accepted.Add(1) })
 	}
 	if p.counted[a.qid] {
 		return
@@ -450,6 +483,9 @@ func (p *player) result(m Message) {
 	p.counted[a.qid] = true
 	q := p.questions[a.qid]
 	received := num(m.Data["receivedAt"])
+	if received >= q.closeAt { // acceptance is received < closeAt (TRD §3.4), even with no worker to close the question
+		p.r.note(&p.r.notes, fmt.Sprintf("%s %s: accepted at %d, after closeAt %d", p.id, a.qid, received, q.closeAt))
+	}
 	want := ExpectedPoints(p.r.keys[a.qid] == a.option, q.openedAt, q.deadline, received)
 	if got := int(num(m.Data["points"])); got != want {
 		p.r.note(&p.r.points, fmt.Sprintf("%s %s: server %d, expected %d", p.id, a.qid, got, want))
@@ -466,6 +502,7 @@ func (p *player) finish() {
 		return
 	}
 	p.finished = true
+	p.r.live(func(l *Live) { l.Finished.Add(1) })
 	if n := p.r.done.Add(1); int(n) == p.r.spec.Participants {
 		close(p.r.allDone)
 	}

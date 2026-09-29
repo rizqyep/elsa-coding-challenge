@@ -37,3 +37,13 @@ func (r *Recorder) Summary() Summary {
 	at := func(p int) time.Duration { return d[max((p*len(d)+99)/100-1, 0)] }
 	return Summary{Count: len(d), P50: at(50), P95: at(95), P99: at(99), Max: d[len(d)-1]}
 }
+
+// Merge adds everything o recorded to r.
+func (r *Recorder) Merge(o *Recorder) {
+	o.mu.Lock()
+	d := slices.Clone(o.d)
+	o.mu.Unlock()
+	r.mu.Lock()
+	r.d = append(r.d, d...)
+	r.mu.Unlock()
+}

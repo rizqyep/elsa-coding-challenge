@@ -31,3 +31,14 @@ func TestRecorder_EmptyAndConcurrent(t *testing.T) {
 		t.Errorf("count %d after 50 concurrent adds", s.Count)
 	}
 }
+
+func TestRecorder_Merge(t *testing.T) {
+	var a, b Recorder
+	a.Add(time.Millisecond)
+	b.Add(3 * time.Millisecond)
+	b.Add(2 * time.Millisecond)
+	a.Merge(&b)
+	if s := a.Summary(); s.Count != 3 || s.Max != 3*time.Millisecond {
+		t.Errorf("merged %+v", s)
+	}
+}

@@ -169,15 +169,25 @@ func (e *Compose) Metrics(ctx context.Context, service string) (map[string]float
 	}
 	out := map[string]float64{}
 	for _, n := range names {
-		text, err := docker(ctx, "exec", e.Project+"-nginx-1", "wget", "-qO-", "http://"+n+":8080/metrics")
-		if err != nil {
-			return nil, fmt.Errorf("metrics from %s: %w", n, err)
-		}
-		if err := metricstest.Parse(strings.NewReader(text), out); err != nil {
+		if err := e.metricsInto(ctx, n, out); err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
+}
+
+// MetricsOf reads one container's /metrics, e.g. "quiz-ws-1".
+func (e *Compose) MetricsOf(ctx context.Context, container string) (map[string]float64, error) {
+	out := map[string]float64{}
+	return out, e.metricsInto(ctx, container, out)
+}
+
+func (e *Compose) metricsInto(ctx context.Context, container string, out map[string]float64) error {
+	text, err := docker(ctx, "exec", e.Project+"-nginx-1", "wget", "-qO-", "http://"+container+":8080/metrics")
+	if err != nil {
+		return fmt.Errorf("metrics from %s: %w", container, err)
+	}
+	return metricstest.Parse(strings.NewReader(text), out)
 }
 
 // Kill kills one container, e.g. "quiz-ws-1"; it stays down until StartAll.
@@ -239,15 +249,70 @@ func (e *Compose) SetRedisEnabled(ctx context.Context, on bool) error {
 	return e.toxi(ctx, "/proxies/redis", map[string]any{"enabled": on})
 }
 
+// RedisResetPeer makes Redis connections reset with a TCP RST, as if torn mid-request (needs the chaos profile).
+func (e *Compose) RedisResetPeer(ctx context.Context) error {
+	return e.toxi(ctx, "/proxies/redis/toxics", map[string]any{"name": "reset", "type": "reset_peer", "attributes": map[string]any{"timeout": 0}})
+}
+
+// RemoveRedisToxic removes one named toxic, e.g. "reset" or "latency".
+func (e *Compose) RemoveRedisToxic(ctx context.Context, name string) error {
+	return e.toxiDo(ctx, http.MethodDelete, "/proxies/redis/toxics/"+name, nil)
+}
+
 // ResetFaults removes Toxiproxy toxics and re-enables its proxies.
 func (e *Compose) ResetFaults(ctx context.Context) error { return e.toxi(ctx, "/reset", nil) }
 
+// ToxiproxyUp reports whether the chaos profile's Toxiproxy is reachable.
+func (e *Compose) ToxiproxyUp(ctx context.Context) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.Toxiproxy+"/version", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := e.http.Do(req)
+	if err != nil {
+		return false
+	}
+	_ = resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// WaitHealthy waits until every project container with a healthcheck reports healthy.
+func (e *Compose) WaitHealthy(ctx context.Context) error {
+	for {
+		out, err := docker(ctx, "ps", "-a", "--format", "{{.Names}} {{.Status}}", "--filter", "label=com.docker.compose.project="+e.Project)
+		if err != nil {
+			return err
+		}
+		var waiting []string
+		for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+			if strings.Contains(line, "-migrate-") {
+				continue
+			}
+			if !strings.Contains(line, " Up ") || (strings.Contains(line, "health") && !strings.Contains(line, "(healthy)")) {
+				waiting = append(waiting, line)
+			}
+		}
+		if len(waiting) == 0 {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("not healthy: %v: %w", waiting, ctx.Err())
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
 func (e *Compose) toxi(ctx context.Context, path string, body any) error {
+	return e.toxiDo(ctx, http.MethodPost, path, body)
+}
+
+func (e *Compose) toxiDo(ctx context.Context, method, path string, body any) error {
 	if e.Toxiproxy == "" {
 		return fmt.Errorf("toxiproxy not configured (start with PROFILES=chaos)")
 	}
 	b, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.Toxiproxy+path, bytes.NewReader(b))
+	req, err := http.NewRequestWithContext(ctx, method, e.Toxiproxy+path, bytes.NewReader(b))
 	if err != nil {
 		return err
 	}
