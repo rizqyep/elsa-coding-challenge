@@ -128,6 +128,7 @@ operations:
     channel:
       $ref: '#/channels/quiz'
     summary: A question opened, or its close time moved earlier
+    description: On early close the same questionId arrives again with an earlier closeAt and a newer stateVersion. Update the countdown; it is not a new question, and an answer already sent stands.
     messages:
     - $ref: '#/channels/quiz/messages/question'
   send_question_closed:
