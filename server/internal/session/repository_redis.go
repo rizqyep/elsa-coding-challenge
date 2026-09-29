@@ -23,11 +23,14 @@ var (
 	standingsSrc string
 	//go:embed scripts/presence.lua
 	presenceSrc string
+	//go:embed scripts/leave.lua
+	leaveSrc string
 
 	joinScript      = redisx.NewScript("join", joinSrc)
 	viewScript      = redisx.NewScript("view", viewSrc)
 	standingsScript = redisx.NewScript("standings", standingsSrc)
 	presenceScript  = redisx.NewScript("presence", presenceSrc)
+	leaveScript     = redisx.NewScript("leave", leaveSrc)
 )
 
 // standingsChunk caps the participants per standings call, so one call never blocks Redis for long.
@@ -35,7 +38,7 @@ const standingsChunk = 500
 
 // Scripts lists this module's Lua scripts, for loading at startup.
 func Scripts() []*redisx.Script {
-	return []*redisx.Script{joinScript, viewScript, standingsScript, presenceScript}
+	return []*redisx.Script{joinScript, viewScript, standingsScript, presenceScript, leaveScript}
 }
 
 // RedisRepository implements Repository on Redis.
@@ -244,4 +247,15 @@ func (r *RedisRepository) RefreshPresence(ctx context.Context, code quiz.Code, i
 		}
 	}
 	return nil
+}
+
+// Leave records that a participant left on purpose: removed in the lobby, only marked offline after start.
+func (r *RedisRepository) Leave(ctx context.Context, code quiz.Code, id quiz.ParticipantID) (LeaveOutcome, error) {
+	c := string(code)
+	keys := []string{redisx.RoomKey(c), redisx.RosterKey(c), redisx.LeaderboardKey(c), redisx.OnlineKey(c), redisx.SchedLeaderboardDirty}
+	out, err := leaveScript.Run(ctx, r.rdb, keys, c, string(id)).Text()
+	if err != nil {
+		return "", fmt.Errorf("leave: %w", err)
+	}
+	return LeaveOutcome(out), nil
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/auth"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/retry"
@@ -36,11 +38,12 @@ func (r *recorder) list() []string {
 }
 
 type fakeJoiner struct {
-	rec    *recorder
-	mu     sync.Mutex
-	inputs []session.JoinInput
-	result session.JoinResult
-	err    error
+	rec      *recorder
+	mu       sync.Mutex
+	inputs   []session.JoinInput
+	result   session.JoinResult
+	err      error
+	leaveErr error
 }
 
 func (j *fakeJoiner) Join(_ context.Context, in session.JoinInput) (session.JoinResult, error) {
@@ -49,6 +52,11 @@ func (j *fakeJoiner) Join(_ context.Context, in session.JoinInput) (session.Join
 	defer j.mu.Unlock()
 	j.inputs = append(j.inputs, in)
 	return j.result, j.err
+}
+
+func (j *fakeJoiner) Leave(_ context.Context, code quiz.Code, id quiz.ParticipantID) (session.LeaveOutcome, error) {
+	j.rec.add("leave " + string(code) + " " + string(id))
+	return session.LeftRemoved, j.leaveErr
 }
 
 func (j *fakeJoiner) calls() []session.JoinInput {
@@ -623,5 +631,51 @@ func TestJoin_LobbyJoinMakesNoExtraRead(t *testing.T) {
 	}
 	if n := len(he.rooms.standingCalls()); n != 0 {
 		t.Errorf("%d standings reads for a lobby join; a join burst must cost one script per participant", n)
+	}
+}
+
+// Leaving records it in Redis, takes the connection out of its room, and closes with 1000 (asyncapi receive_leave).
+func TestLeave_RecordsLeavesTheRoomAndCloses(t *testing.T) {
+	he := newHandlerEnv(t)
+	c, sock := he.connAs("u_1", auth.RoleParticipant)
+	he.send(c, "r1", protocol.TypeJoin, joinMsg("Rina"))
+	he.nth(sock, 1)
+
+	he.send(c, "", protocol.TypeLeave, protocol.Leave{})
+	waitFor(t, "close frame", func() bool { return len(sock.closeCodes()) == 1 })
+	if code := sock.closeCodes()[0]; code != websocket.CloseNormalClosure {
+		t.Errorf("closed with %d, want 1000", code)
+	}
+	if got := he.rec.list(); !slices.Contains(got, "leave "+string(hcode)+" u_1") {
+		t.Errorf("events %v, want the leave recorded for u_1 in %s", got, hcode)
+	}
+	if _, ok := c.Member(); ok {
+		t.Error("connection still a member of the room after leaving")
+	}
+}
+
+// A failed leave still closes the socket: the player is gone from this tab either way.
+func TestLeave_RedisFailureStillCloses(t *testing.T) {
+	he := newHandlerEnv(t)
+	he.joiner.leaveErr = errors.New("redis down")
+	c, sock := he.connAs("u_1", auth.RoleParticipant)
+	he.send(c, "r1", protocol.TypeJoin, joinMsg("Rina"))
+	he.nth(sock, 1)
+	he.send(c, "", protocol.TypeLeave, protocol.Leave{})
+	waitFor(t, "close frame", func() bool { return len(sock.closeCodes()) == 1 })
+}
+
+// Leaving before joining, or as the host, touches nothing in Redis.
+func TestLeave_WithoutAPlayerOnlyCloses(t *testing.T) {
+	he := newHandlerEnv(t)
+	for _, role := range []auth.Role{auth.RoleParticipant, auth.RoleHost} {
+		c, sock := he.connAs("u_x", role)
+		he.send(c, "", protocol.TypeLeave, protocol.Leave{})
+		waitFor(t, "close frame", func() bool { return len(sock.closeCodes()) == 1 })
+	}
+	for _, e := range he.rec.list() {
+		if strings.HasPrefix(e, "leave") {
+			t.Errorf("recorded %q for a connection with no player in a room", e)
+		}
 	}
 }

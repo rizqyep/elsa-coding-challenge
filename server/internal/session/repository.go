@@ -61,3 +61,13 @@ type Answer struct {
 	Correct  bool
 	Points   int
 }
+
+// LeaveOutcome is what a leave did to the participant.
+type LeaveOutcome string
+
+// Leave outcomes.
+const (
+	LeftRemoved LeaveOutcome = "removed" // lobby: off the roster and leaderboard
+	LeftOffline LeaveOutcome = "offline" // quiz started: score kept, no longer online
+	LeftGone    LeaveOutcome = "gone"    // room already released
+)

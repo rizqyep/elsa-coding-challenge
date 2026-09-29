@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/auth"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/retry"
@@ -22,9 +24,10 @@ const (
 	busyRetryAfter = time.Second
 )
 
-// Joiner adds participants to a room (session.RedisRepository).
+// Joiner adds participants to a room and records when they leave (session.RedisRepository).
 type Joiner interface {
 	Join(ctx context.Context, in session.JoinInput) (session.JoinResult, error)
+	Leave(ctx context.Context, code quiz.Code, id quiz.ParticipantID) (session.LeaveOutcome, error)
 }
 
 // RoomLookup reads a room's control record (quiz.RedisRepository).
@@ -73,7 +76,22 @@ func (h *MessageHandler) Handle(ctx context.Context, c *Conn, m protocol.ClientM
 		h.submit(ctx, c, m.ID, p)
 	case protocol.Ping:
 		c.Reply(m.ID, protocol.TypePong, protocol.Pong{ClientTime: p.ClientTime, ServerTime: h.d.Clock.NowMs()})
+	case protocol.Leave:
+		h.leave(ctx, c)
 	}
+}
+
+// leave records an intentional leave, then closes with 1000; a failed record still closes (asyncapi receive_leave).
+func (h *MessageHandler) leave(ctx context.Context, c *Conn) {
+	if m, ok := c.Member(); ok && c.Claims().Role == auth.RoleParticipant {
+		if _, err := call(ctx, redisTimeout, func(ctx context.Context) (session.LeaveOutcome, error) {
+			return h.d.Joiner.Leave(ctx, m.Code, m.ParticipantID)
+		}); err != nil {
+			h.d.Hub.log.Warn("leave not recorded", "quiz", string(m.Code), "participant", string(m.ParticipantID), "error", err)
+		}
+	}
+	h.d.Hub.Leave(c)
+	c.Close(websocket.CloseNormalClosure, "left")
 }
 
 // Snapshot resyncs a slow client.
