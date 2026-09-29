@@ -4,15 +4,12 @@ import "sort"
 
 // Scoring constants (FR-19).
 const (
-	BasePoints = 100 // for any correct answer
-	MaxBonus   = 100 // for answering the instant the question opens
+	BasePoints = 100
+	MaxBonus   = 100
 	MaxPoints  = BasePoints + MaxBonus
 )
 
-// Points scores one accepted answer (FR-19). Times are epoch milliseconds from the server clock.
-// The bonus is floor(100 × remaining / window), remaining = deadline − receivedAt clamped to [0, window].
-// deadline is the question's original deadline, so an early close never changes points.
-// Integer arithmetic only: answer.lua computes the same value (checked by shared test vectors).
+// Points scores an accepted answer (FR-19, TRD §3.4). Mirrored by answer.lua (testdata/points_cases.json).
 func Points(correct bool, openedAt, deadline, receivedAt int64) int {
 	if !correct {
 		return 0
@@ -25,12 +22,10 @@ func Points(correct bool, openedAt, deadline, receivedAt int64) int {
 	return BasePoints + int(MaxBonus*remaining/window)
 }
 
-// RankOf returns the rank for a participant with the given number of strictly higher scores
-// (FR-24: equal scores share a rank).
+// RankOf is the rank of a score with the given number of strictly higher scores (FR-24).
 func RankOf(higher int) int { return higher + 1 }
 
-// CompetitionRanks returns each score's rank, in input order: equal scores share a rank and
-// the next rank skips (1, 2, 2, 4).
+// CompetitionRanks returns each score's rank in input order, e.g. 1, 2, 2, 4 (FR-24).
 func CompetitionRanks(scores []int) []int {
 	sorted := append([]int(nil), scores...)
 	sort.Sort(sort.Reverse(sort.IntSlice(sorted)))

@@ -13,13 +13,12 @@ var ErrBudgetExhausted = errors.New("retry budget exhausted")
 
 // Policy is capped exponential backoff with full jitter (TRD §9.3).
 type Policy struct {
-	Base   time.Duration // ceiling of the first delay
-	Cap    time.Duration // largest ceiling for any delay
-	Budget time.Duration // total time allowed across all attempts
+	Base   time.Duration
+	Cap    time.Duration
+	Budget time.Duration // total across all attempts
 }
 
-// Delay returns the sleep before retry number attempt (0-based): uniform in [0, min(Cap, Base·2^attempt)).
-// rnd(n) must return a value in [0, n).
+// Delay is uniform in [0, min(Cap, Base·2^attempt)); rnd(n) must return a value in [0, n).
 func (p Policy) Delay(attempt int, rnd func(n int64) int64) time.Duration {
 	ceiling := p.ceiling(attempt)
 	if ceiling <= 0 {
@@ -28,7 +27,7 @@ func (p Policy) Delay(attempt int, rnd func(n int64) int64) time.Duration {
 	return time.Duration(rnd(int64(ceiling)))
 }
 
-// ceiling doubles Base up to Cap. The loop stops once Cap is reached, so it can't overflow.
+// ceiling stops doubling at Cap, so it can't overflow.
 func (p Policy) ceiling(attempt int) time.Duration {
 	c := p.Base
 	for i := 0; i < attempt && c < p.Cap; i++ {
@@ -56,8 +55,7 @@ func New(p Policy, retryable func(error) bool) Retrier {
 	return Retrier{Policy: p, Clock: realClock{}, Rand: rand.Int64N, Retryable: retryable}
 }
 
-// Do calls fn until it returns nil, returns a non-retryable error, the context ends,
-// or the next delay would exceed the budget (then it returns ErrBudgetExhausted wrapping fn's last error).
+// Do retries fn until success, a non-retryable error, context end, or the budget runs out.
 func (r Retrier) Do(ctx context.Context, fn func(context.Context) error) error {
 	if err := ctx.Err(); err != nil {
 		return err

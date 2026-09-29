@@ -14,9 +14,7 @@ const (
 	StatusExpired        Status = "expired"
 )
 
-// Room is the part of the room control record the state machine works on. Times are epoch
-// milliseconds from the server clock (Redis TIME). transition.lua implements the same rules;
-// both are tested against testdata/transition_cases.json.
+// Room is the state the state machine works on (TRD §3.3). Times are epoch milliseconds.
 type Room struct {
 	HostID           ParticipantID `json:"hostId"`
 	Status           Status        `json:"status"`
@@ -25,8 +23,8 @@ type Room struct {
 	WindowMs         int64         `json:"windowMs"`
 	RevealMs         int64         `json:"revealMs"`
 	OpenedAt         int64         `json:"openedAt"`
-	Deadline         int64         `json:"deadline"` // original deadline; the speed bonus uses it
-	CloseAt          int64         `json:"closeAt"`  // when answers stop being accepted; earlier after an early close
+	Deadline         int64         `json:"deadline"` // original; the speed bonus uses it
+	CloseAt          int64         `json:"closeAt"`  // answers accepted until; ≤ Deadline
 	NextTransitionAt int64         `json:"nextTransitionAt"`
 	StartRequested   bool          `json:"startRequested"`
 	LobbyExpiresAt   int64         `json:"lobbyExpiresAt"`
@@ -38,9 +36,9 @@ type Outcome string
 
 // Next outcomes.
 const (
-	Applied  Outcome = "applied"  // a transition happened; StateVersion was incremented
-	NotDue   Outcome = "not_due"  // nothing to do yet
-	Terminal Outcome = "terminal" // finished or expired; nothing will ever happen
+	Applied  Outcome = "applied"
+	NotDue   Outcome = "not_due"
+	Terminal Outcome = "terminal"
 )
 
 // EventType names what a transition announces to the room (TRD §3.7).
@@ -61,7 +59,7 @@ type Event struct {
 	QuestionIndex int       `json:"questionIndex"`
 }
 
-// Next applies the transition that is due at now, if any.
+// Next applies the transition due at now, if any. Mirrored by transition.lua (testdata/transition_cases.json).
 func Next(r Room, now int64) (Room, Outcome, Event) {
 	if r.Status == StatusFinished || r.Status == StatusExpired {
 		return r, Terminal, Event{}
@@ -85,7 +83,6 @@ func Next(r Room, now int64) (Room, Outcome, Event) {
 		if now < r.CloseAt {
 			return r, NotDue, Event{}
 		}
-		// The reveal is timed from the actual close, so a late close still shows the full reveal.
 		r.Status, r.NextTransitionAt = StatusQuestionClosed, now+r.RevealMs
 		ev = Event{Type: QuestionClosed, QuestionIndex: r.QuestionIndex}
 	case StatusQuestionClosed:
@@ -100,7 +97,6 @@ func Next(r Room, now int64) (Room, Outcome, Event) {
 	return r, Applied, ev
 }
 
-// openQuestion opens question i with a full window from now.
 func (r *Room) openQuestion(i int, now int64) Event {
 	r.Status, r.QuestionIndex, r.OpenedAt = StatusQuestionOpen, i, now
 	r.Deadline = now + r.WindowMs
@@ -115,8 +111,7 @@ var (
 	ErrNoParticipants = errors.New("the quiz has no participants yet")
 )
 
-// Start records the host's start request; a worker then opens the first question (FR-3, FR-4).
-// Starting an already-started quiz is a no-op.
+// Start records the host's start request (FR-3); a second start is a no-op.
 func Start(r Room, caller ParticipantID, participants int, now int64) (Room, error) {
 	switch {
 	case caller != r.HostID:
@@ -132,8 +127,7 @@ func Start(r Room, caller ParticipantID, participants int, now int64) (Room, err
 	return r, nil
 }
 
-// EarlyClose closes the open question now if every online participant has answered (FR-5).
-// Only CloseAt moves; Deadline keeps its original value because the speed bonus uses it.
+// EarlyClose closes the open question once every online participant has answered (FR-5).
 func EarlyClose(r Room, answered, online int, now int64) (Room, bool) {
 	if r.Status != StatusQuestionOpen || online < 1 || answered < online || now >= r.CloseAt {
 		return r, false

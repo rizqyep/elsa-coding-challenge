@@ -7,11 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Script is a Lua script called by hash (TRD §4.1).
-//
-// Run sends EVALSHA and falls back to EVAL on NOSCRIPT. That fallback can't happen inside a
-// pipeline (the answer script is pipelined with WAIT), so every script must also be loaded
-// with LoadScripts at startup.
+// Script is a Lua script called by hash; load it at startup with LoadScripts (TRD §4.1, §4.4).
 type Script struct {
 	Name   string
 	script *redis.Script

@@ -37,9 +37,7 @@ func TestNewCode_LengthAndAlphabet(t *testing.T) {
 	}
 }
 
-// Rejection sampling, no modulo bias: bytes 0–247 (= 31·8) are accepted and 248–255 rejected.
-// Six rounds of all 256 byte values give 6·248 = 1,488 accepted bytes = exactly 248 codes,
-// so every symbol must appear exactly 6·8 = 48 times. (NewCode reads its source sequentially.)
+// Six rounds of all 256 byte values → exactly 248 codes → 48 of each symbol if unbiased.
 func TestNewCode_RejectionSamplingHasNoModuloBias(t *testing.T) {
 	round := make([]byte, 256)
 	for i := range round {

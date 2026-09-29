@@ -105,6 +105,7 @@ internal/scoring/
 - `cmd/*` is the only place that constructs concrete implementations and wires them together.
 - **Redis key names live in one place** (`platform/redisx/keys.go`). Each Lua script belongs to the module whose use case it implements, even when it touches another module's keys. The answer script, owned by `scoring`, updates the leaderboard key, because atomicity requires one script. This is deliberate coupling at the storage level, kept visible in one file.
 - `testkit/` is outside `internal/` so `cmd/sim` and tests in any package can use it. It depends only on `protocol/` and the public contracts.
+- **Comments stay minimal:** one-line doc comments on exported names (required by the linter), and a short comment only where the code would otherwise mislead. Rationale and edge-case reasoning live in the docs (this TRD, task files, `context.md` decisions), and the comment points there, e.g. `// TRD §3.3`. AI-assistance pointers follow the same one-line rule (D7).
 
 ### 1.5 Generated code
 

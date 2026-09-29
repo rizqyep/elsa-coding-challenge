@@ -1,7 +1,6 @@
 package redisx
 
-// Key names (TRD §4.2). Every key of a room carries the {code} hash tag, so a room's keys
-// share one Redis Cluster slot and can be used together in one Lua script.
+// Key names: TRD §4.2. Room keys share the {code} hash tag (one cluster slot).
 
 // Global schedule keys.
 const (

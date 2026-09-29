@@ -9,8 +9,7 @@ import (
 
 func TestKeys_Names(t *testing.T) {
 	const code = "K7Q2MX"
-	// A slice, not a map keyed by the result: two functions wrongly returning the same
-	// name would otherwise overwrite each other's case and go unnoticed.
+	// A slice, not a map: duplicate names must not hide each other.
 	cases := []struct{ got, want string }{
 		{redisx.RoomKey(code), "quiz:{K7Q2MX}:room"},
 		{redisx.QuestionIDsKey(code), "quiz:{K7Q2MX}:qids"},

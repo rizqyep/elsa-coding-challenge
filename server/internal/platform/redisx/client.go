@@ -7,8 +7,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// NewClient returns a Redis client. Callers still set per-call deadlines (TRD §9.2);
-// the timeouts here only bound a single network round trip.
+// NewClient returns a Redis client; per-call deadlines are set by callers (TRD §9.2).
 func NewClient(addr, password string) *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:         addr,

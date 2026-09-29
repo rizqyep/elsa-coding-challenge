@@ -23,13 +23,12 @@ type (
 )
 
 const (
-	// CodeAlphabet has 31 symbols: digits and letters without the look-alikes 0, 1, O, I, L.
+	// CodeAlphabet omits the look-alikes 0, 1, O, I, L (D16).
 	CodeAlphabet = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
-	// CodeLength is the number of symbols in a code (31^6 ≈ 887 million codes).
+	// CodeLength is the number of symbols in a code.
 	CodeLength = 6
 
-	// acceptBelow is the largest multiple of len(CodeAlphabet) that fits in a byte (31·8 = 248).
-	// Bytes at or above it are rejected, so every symbol is equally likely.
+	// acceptBelow = 31·8; larger bytes are rejected to avoid modulo bias.
 	acceptBelow = 248
 )
 
@@ -70,7 +69,7 @@ func ParseCode(s string) (Code, error) {
 	return Code(s), nil
 }
 
-// Question window and reveal limits for per-quiz overrides, in milliseconds (FR-7).
+// Per-quiz timing limits in milliseconds (FR-7).
 const (
 	MinWindowMs = 5_000
 	MaxWindowMs = 120_000
