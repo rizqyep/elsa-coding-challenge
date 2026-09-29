@@ -24,7 +24,17 @@ export function useRoom(hello: Hello) {
     })
     socket.current = s
     s.start()
-    return () => s.close()
+    // Closing the tab counts as leaving. A reload fires this too; the player keeps their identity when they join again.
+    const hide = () => s.leave()
+    // A page restored from the back/forward cache has a stopped socket, so load it fresh.
+    const show = (e: PageTransitionEvent) => e.persisted && location.reload()
+    window.addEventListener('pagehide', hide)
+    window.addEventListener('pageshow', show)
+    return () => {
+      window.removeEventListener('pagehide', hide)
+      window.removeEventListener('pageshow', show)
+      s.leave()
+    }
   }, [key, role])
 
   return {

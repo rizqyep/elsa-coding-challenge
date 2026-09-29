@@ -162,4 +162,26 @@ describe('QuizSocket', () => {
     expect(FakeWebSocket.all).toHaveLength(1)
     expect(statuses.at(-1)).toBe('closed')
   })
+
+  it('leave() tells the server once joined, then stops without reconnecting', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const s = socket()
+    const ws = await connected(s)
+    ws.receive(snapshotReply(ws.sent[0].id as string))
+    s.leave()
+    expect(ws.sent.at(-1)).toMatchObject({ v: 1, type: 'leave', data: {} })
+    expect(ws.closed).toBe(true)
+    ws.drop(1000)
+    await vi.runAllTimersAsync()
+    expect(FakeWebSocket.all).toHaveLength(1)
+    expect(statuses.at(-1)).toBe('closed')
+  })
+
+  it('leave() before the join completes sends nothing', async () => {
+    const s = socket()
+    const ws = await connected(s)
+    s.leave()
+    expect(ws.types()).toEqual([`join:${ws.sent[0].id}`])
+    expect(ws.closed).toBe(true)
+  })
 })

@@ -67,6 +67,14 @@ export class QuizSocket {
     return id
   }
 
+  // leave tells the server this is on purpose (removed in the lobby, score kept after start), then stops.
+  leave() {
+    if (this.joined && this.o.hello.type === 'join') {
+      this.ws?.send(JSON.stringify({ v: 1, type: 'leave', id: this.nextId('l'), data: {} }))
+    }
+    this.close()
+  }
+
   close() {
     this.stopped = true
     this.clearTimers()
