@@ -253,7 +253,7 @@ type Room struct {
 | `question_closed` (i) | `i = QuestionCount − 1` | `finished` | enqueue finalise job. Event `QuizFinished` |
 | `finished`, `expired` | — | — | terminal; nothing scheduled |
 
-Every transition increments `StateVersion`. **Exactly-once (NFR-14) comes from the transition script deciding and applying in one atomic step:** after any applied transition the next one is in the future (window ≥ 5 s, reveal ≥ 2 s), so competing workers find nothing due. The expected-version argument is an extra guard, not the mechanism (task-13 mutation finding).
+Every transition increments `StateVersion`. **Exactly-once (NFR-14) comes from the transition script deciding and applying in one atomic step:** after any applied transition the next one is in the future (window ≥ 5 s, reveal ≥ 2 s), so competing workers find nothing due. An earlier expected-version argument was removed as redundant (task-13 mutation finding).
 
 **Commands** (not transitions; they change fields the scheduler later acts on):
 
@@ -334,8 +334,7 @@ Per-option answer counts in the reveal were considered and left out for now: not
 - **Hash tag:** every key of a room contains `{C}`, where `C` is the quiz code, so a room's keys share one Cluster slot.
 - **Time:** scripts read `TIME` and work in integer milliseconds. Services never pass their own clock into a decision.
 - **Scripts never build key names.** Every key a script touches is passed in `KEYS` (a Redis Cluster rule). When a key depends on state (e.g. the current question's answers), the caller computes it from state it has read, and the script rejects the call if that state has since changed:
-  - the answer script checks the message's question ID against the current one before touching `ans:{qid}`;
-  - the transition script checks the state version it was given.
+  - the answer script checks the message's question ID against the current one before touching `ans:{qid}`.
 - **Loading:** scripts are embedded with `//go:embed`, loaded at startup, and called by hash (`EVALSHA`, with automatic reload on `NOSCRIPT`).
 - **Returns:** always an array whose first element is a status string (`ok`, `accepted`, `duplicate`, `rejected`, `stale`, …). Business outcomes are return values, never Redis errors. A Redis error means an infrastructure failure.
 - **Events:** a script that changes what the room should see publishes the event itself (§3.7), JSON-encoded with Redis' built-in `cjson`. The channel name is passed in `KEYS` too. Plain `PUBLISH` doesn't require it, but sharded pub/sub (`SPUBLISH`, the Cluster step) does.
@@ -432,19 +431,18 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
 #### `transition`
 
 - **KEYS:** `room`, `qids`, `sched:transitions`, `sched:flush`, `sched:lbdirty`, `lb`, `roster`, `room:{C}` (channel)
-- **ARGV:** code, expected_state_ver, top_n
+- **ARGV:** code, top_n
 - **Steps:**
   1. No room → `ZREM sched:transitions code`, `{stale}`.
-  2. `state_ver ≠ expected` → `{stale}` (another worker won).
-  3. `now < next_at` → `ZADD sched:transitions next_at code`, `{not_due}` (repairs a stale schedule entry).
-  4. Apply the §3.3 table:
+  2. `now < next_at` → `ZADD sched:transitions next_at code`, `{not_due}` (repairs a stale schedule entry). **This check is what makes competing workers harmless:** after any applied transition the next one is in the future, so the others find nothing due.
+  3. Apply the §3.3 table:
      - **open question i:** `q_id = LINDEX qids i`, `opened_at = now`, `deadline = close_at = next_at = now + window`
      - **close:** `next_at = now + reveal`, `ZADD sched:flush now "q|C|q_id"`, `HINCRBY pending_flush 1`, `SADD sched:lbdirty code`
      - **finish:** `ZADD sched:flush now "final|C"`, `ZREM sched:transitions code`, publish `finished` with the final top N
      - **expire:** `ZADD sched:flush now "final|C"`, `ZREM sched:transitions code`
-  5. `HINCRBY state_ver 1`. Unless terminal, `ZADD sched:transitions next_at code`. Publish `state`.
+  4. `HINCRBY state_ver 1`. Unless terminal, `ZADD sched:transitions next_at code`. Publish `state`.
 - **Returns:** `{applied, status, state_ver}` / `{stale}` / `{not_due}`
-- **Worker loop:** `ZRANGEBYSCORE sched:transitions -inf now LIMIT 0 SCHED_CLAIM_BATCH`, then for each code `HGET room state_ver` and run the script with that version. Competing workers are harmless: losers get `stale`.
+- **Worker loop:** `ZRANGEBYSCORE sched:transitions -inf now LIMIT 0 SCHED_CLAIM_BATCH`, then run the script for each code. Competing workers are harmless: every worker after the first gets `not_due`.
 
 #### `leaderboard`
 
@@ -775,11 +773,11 @@ Each worker runs three independent loops, each on its own `time.Ticker`. A pass 
 
 | Loop | Every | Claim | Work per item | Parallelism |
 |---|---|---|---|---|
-| Transitions | `SCHED_TRANSITION_POLL` (100 ms) | `ZRANGEBYSCORE sched:transitions -inf now LIMIT 0 N` | `HGET state_ver` → `transition` script | bounded pool, 16 |
+| Transitions | `SCHED_TRANSITION_POLL` (100 ms) | `ZRANGEBYSCORE sched:transitions -inf now LIMIT 0 N` | `transition` script | bounded pool, 16 |
 | Leaderboard | `SCHED_LEADERBOARD_TICK` (200 ms) | `SPOP sched:lbdirty N` | `leaderboard` script | bounded pool, 16 |
 | Flush | `SCHED_FLUSH_POLL` (1 s) | `claim` script | answer flush or finalise (§4.5) | bounded pool, 4 |
 
-Several workers run the same loops. Transitions are guarded by the version check, leaderboard codes by `SPOP`, and flush jobs by the claim's visibility timeout, so extra workers never duplicate work. They only compete for it.
+Several workers run the same loops. Transitions are guarded by the script's due check, leaderboard codes by `SPOP`, and flush jobs by the claim's visibility timeout, so extra workers never duplicate work. They only compete for it.
 
 ### 8.2 Idempotency
 
@@ -787,7 +785,7 @@ Every step is safe to repeat, which is what makes crash recovery a no-op:
 
 | Step | Why it is safe to repeat |
 |---|---|
-| Transition | Version check: a repeat gets `stale` |
+| Transition | Due check: a repeat finds nothing due (`not_due`) |
 | Leaderboard | Publishing a newer snapshot is always correct; the version only goes up |
 | Answer flush insert | `ON CONFLICT DO NOTHING` on the primary key |
 | `flush_ack` | `DEL` is idempotent; the counter only decrements if the job still existed |

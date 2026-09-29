@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/redisx"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/quiz"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/scoring"
@@ -144,19 +145,6 @@ func TestTransition_OpensTheFirstQuestionAndAnnouncesIt(t *testing.T) {
 	}
 }
 
-func TestTransition_StaleVersionChangesNothing(t *testing.T) {
-	repo := started(t, "u_1")
-	ctx := context.Background()
-	before, _ := repo.Room(ctx, input.Code)
-	res, err := repo.ApplyTransitionAt(ctx, input.Code, before.StateVersion+1)
-	if err != nil || res.Outcome != quiz.Stale {
-		t.Fatalf("got %+v, %v; want stale", res, err)
-	}
-	if after, _ := repo.Room(ctx, input.Code); after != before {
-		t.Errorf("room changed:\n  %+v\n  %+v", before, after)
-	}
-}
-
 func TestTransition_NotDueRepairsTheSchedule(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
@@ -278,39 +266,6 @@ func TestTransition_TerminalAndUnknownRoomsLeaveTheSchedule(t *testing.T) {
 	}
 }
 
-// NFR-14: several workers applying the same due transition → exactly one applies it.
-func TestTransition_CompetingWorkersApplyOnce(t *testing.T) {
-	repo := started(t, "u_1")
-	ctx := context.Background()
-	rec, _ := repo.Room(ctx, input.Code)
-	const workers = 20
-	outcomes := make(chan quiz.Outcome, workers)
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Go(func() {
-			res, err := repo.ApplyTransitionAt(ctx, input.Code, rec.StateVersion)
-			if err != nil {
-				t.Error(err)
-			}
-			outcomes <- res.Outcome
-		})
-	}
-	wg.Wait()
-	close(outcomes)
-	applied := 0
-	for o := range outcomes {
-		if o == quiz.Applied {
-			applied++
-		}
-	}
-	if applied != 1 {
-		t.Errorf("%d workers applied the transition, want exactly 1", applied)
-	}
-	if after, _ := repo.Room(ctx, input.Code); after.StateVersion != rec.StateVersion+1 {
-		t.Errorf("state version %d, want %d", after.StateVersion, rec.StateVersion+1)
-	}
-}
-
 func TestDueTransitions(t *testing.T) {
 	repo := newRepo(t)
 	ctx := context.Background()
@@ -407,4 +362,254 @@ func roomInt(t *testing.T, field string) int64 {
 		t.Fatal(err)
 	}
 	return v
+}
+
+// stage drives a fresh started quiz (2 questions) to just before the named transition, which is then due.
+func stage(t *testing.T, name string) *quiz.RedisRepository {
+	t.Helper()
+	repo := started(t, "u_1", "u_2")
+	steps := map[string]int{"lobby → first question": 0, "open → closed": 1, "closed → next question": 2, "last closed → finished": 4}[name]
+	for i := range steps {
+		apply(t, repo)
+		if i%2 == 0 { // just opened: make its close due
+			forceDue(t, "close_at", int64(0))
+		} else { // just closed: make the reveal over
+			forceDue(t)
+		}
+	}
+	return repo
+}
+
+// collect drains every event published on the room channel within the window.
+func collect(t *testing.T) func(window time.Duration) []map[string]any {
+	t.Helper()
+	ctx := context.Background()
+	sub := env.Redis.Subscribe(ctx, redisx.RoomChannel(string(input.Code)))
+	t.Cleanup(func() { _ = sub.Close() })
+	if _, err := sub.Receive(ctx); err != nil {
+		t.Fatal(err)
+	}
+	return func(window time.Duration) []map[string]any {
+		var out []map[string]any
+		deadline := time.Now().Add(window)
+		for {
+			cctx, cancel := context.WithDeadline(ctx, deadline)
+			msg, err := sub.ReceiveMessage(cctx)
+			cancel()
+			if err != nil {
+				return out
+			}
+			var ev map[string]any
+			if err := json.Unmarshal([]byte(msg.Payload), &ev); err != nil {
+				t.Fatal(err)
+			}
+			out = append(out, ev)
+		}
+	}
+}
+
+// checkSchedule asserts the schedule entry mirrors the room: next_at while running, absent once terminal.
+func checkSchedule(t *testing.T, repo *quiz.RedisRepository) {
+	t.Helper()
+	ctx := context.Background()
+	rec, err := repo.Room(ctx, input.Code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	score, err := env.Redis.ZScore(ctx, redisx.SchedTransitions, string(input.Code)).Result()
+	switch terminal := rec.Status == quiz.StatusFinished || rec.Status == quiz.StatusExpired; {
+	case terminal && err == nil:
+		t.Errorf("%s room still scheduled at %v", rec.Status, score)
+	case !terminal && (err != nil || int64(score) != rec.NextTransitionAt):
+		t.Errorf("%s room scheduled at %v (%v), want next_at %d", rec.Status, score, err, rec.NextTransitionAt)
+	}
+}
+
+// NFR-14: at every stage, 20 workers applying the same due transition → exactly one takes effect.
+func TestTransition_CompetingWorkersApplyOnceAtEveryStage(t *testing.T) {
+	for _, name := range []string{"lobby → first question", "open → closed", "closed → next question", "last closed → finished"} {
+		t.Run(name, func(t *testing.T) {
+			repo := stage(t, name)
+			ctx := context.Background()
+			before, _ := repo.Room(ctx, input.Code)
+			events := collect(t)
+			const workers = 20
+			outcomes := make(chan quiz.Outcome, workers)
+			var wg sync.WaitGroup
+			for range workers {
+				wg.Go(func() {
+					res, err := repo.ApplyTransition(ctx, input.Code)
+					if err != nil {
+						t.Error(err)
+					}
+					outcomes <- res.Outcome
+				})
+			}
+			wg.Wait()
+			close(outcomes)
+			counts := map[quiz.Outcome]int{}
+			for o := range outcomes {
+				counts[o]++
+			}
+			losers := quiz.NotDue // the next transition is in the future…
+			if name == "last closed → finished" {
+				losers = quiz.Terminal // …or there is none
+			}
+			if counts[quiz.Applied] != 1 || counts[losers] != workers-1 {
+				t.Errorf("outcomes %v, want 1 applied and %d %s", counts, workers-1, losers)
+			}
+			after, _ := repo.Room(ctx, input.Code)
+			if after.StateVersion != before.StateVersion+1 {
+				t.Errorf("state version %d → %d, want +1", before.StateVersion, after.StateVersion)
+			}
+			if got := events(300 * time.Millisecond); len(got) != 1 {
+				t.Errorf("%d events published, want exactly 1: %v", len(got), got)
+			}
+			if name == "open → closed" {
+				if after.PendingFlush != before.PendingFlush+1 {
+					t.Errorf("pending_flush %d → %d, want +1", before.PendingFlush, after.PendingFlush)
+				}
+				if n := env.Redis.ZCard(ctx, redisx.SchedFlush).Val(); n != 1 {
+					t.Errorf("%d flush jobs queued, want 1", n)
+				}
+			}
+			checkSchedule(t, repo)
+		})
+	}
+}
+
+func TestTransition_RepeatedAppliesDoNotAdvanceTwice(t *testing.T) {
+	repo := started(t, "u_1")
+	if res := apply(t, repo); res.Outcome != quiz.Applied {
+		t.Fatalf("first apply: %+v", res)
+	}
+	for range 5 {
+		if res := apply(t, repo); res.Outcome != quiz.NotDue {
+			t.Fatalf("repeat apply: %+v, want not_due", res)
+		}
+	}
+	if rec, _ := repo.Room(context.Background(), input.Code); rec.StateVersion != 2 || rec.QuestionIndex != 0 {
+		t.Errorf("room advanced more than once: %+v", rec)
+	}
+}
+
+func TestTransition_ScheduleMirrorsTheRoomThroughTheWholeQuiz(t *testing.T) {
+	repo := started(t, "u_1")
+	checkSchedule(t, repo)
+	for i := range 4 { // open, close, open, close
+		apply(t, repo)
+		checkSchedule(t, repo)
+		if i%2 == 0 {
+			forceDue(t, "close_at", int64(0))
+		} else {
+			forceDue(t)
+		}
+	}
+	if res := apply(t, repo); res.Status != quiz.StatusFinished {
+		t.Fatalf("result %+v", res)
+	}
+	checkSchedule(t, repo)
+	if res := apply(t, repo); res.Outcome != quiz.Terminal {
+		t.Errorf("applying to a finished quiz: %+v, want terminal", res)
+	}
+}
+
+func TestTransition_AfterEarlyCloseKeepsTheOriginalDeadline(t *testing.T) {
+	repo := started(t, "u_1")
+	ctx := context.Background()
+	apply(t, repo)
+	opened, _ := repo.Room(ctx, input.Code)
+	now := env.Redis.Time(ctx).Val().UnixMilli()
+	env.Redis.HSet(ctx, redisx.RoomKey(string(input.Code)), "close_at", now, "next_at", now) // what the answer script does
+	res := apply(t, repo)
+	closed, _ := repo.Room(ctx, input.Code)
+	if res.Status != quiz.StatusQuestionClosed || closed.Deadline != opened.Deadline || closed.CloseAt != now {
+		t.Errorf("after early close: %+v (deadline %d → %d)", closed, opened.Deadline, closed.Deadline)
+	}
+	if d := closed.NextTransitionAt - now; d < input.RevealMs || d > input.RevealMs+5_000 {
+		t.Errorf("reveal ends %d ms after the early close, want about %d", d, input.RevealMs)
+	}
+}
+
+func TestTransition_AfterWorkerDowntimeTimesFromTheActualTransition(t *testing.T) {
+	repo := started(t, "u_1")
+	ctx := context.Background()
+	apply(t, repo)
+	now := env.Redis.Time(ctx).Val().UnixMilli()
+	forceDue(t, "close_at", now-60_000) // the close was due a minute ago
+	apply(t, repo)
+	closed, _ := repo.Room(ctx, input.Code)
+	if closed.NextTransitionAt < now+input.RevealMs {
+		t.Errorf("reveal ends at %d, before now+reveal %d: participants lose the reveal", closed.NextTransitionAt, now+input.RevealMs)
+	}
+	forceDue(t, "next_at", now-30_000) // and the next question was due 30 s ago
+	apply(t, repo)
+	next, _ := repo.Room(ctx, input.Code)
+	if next.OpenedAt < now || next.Deadline-next.OpenedAt != input.WindowMs {
+		t.Errorf("late-opened question: opened %d (now %d), window %d; want a full window from now", next.OpenedAt, now, next.Deadline-next.OpenedAt)
+	}
+}
+
+func TestTransition_StartWinsOverLobbyExpiry(t *testing.T) {
+	repo := started(t, "u_1")
+	ctx := context.Background()
+	forceDue(t, "lobby_expires_at", int64(0))
+	if res := apply(t, repo); res.Status != quiz.StatusQuestionOpen {
+		t.Fatalf("result %+v, want the quiz started", res)
+	}
+	if n := env.Redis.ZCard(ctx, redisx.SchedFlush).Val(); n != 0 {
+		t.Errorf("%d final-results jobs queued for a quiz that started", n)
+	}
+}
+
+func TestTransition_RoomsAreIndependent(t *testing.T) {
+	repo := started(t, "u_1")
+	ctx := context.Background()
+	other := input
+	other.Code = "ABCDEF"
+	if err := repo.CreateRoom(ctx, other); err != nil {
+		t.Fatal(err)
+	}
+	otherBefore, _ := repo.Room(ctx, other.Code)
+	otherSched := env.Redis.ZScore(ctx, redisx.SchedTransitions, "ABCDEF").Val()
+	apply(t, repo)
+	forceDue(t, "close_at", int64(0))
+	apply(t, repo)
+	if after, _ := repo.Room(ctx, other.Code); after != otherBefore {
+		t.Errorf("the other room changed:\n  %+v\n  %+v", otherBefore, after)
+	}
+	if got := env.Redis.ZScore(ctx, redisx.SchedTransitions, "ABCDEF").Val(); got != otherSched {
+		t.Errorf("the other room's schedule moved: %v → %v", otherSched, got)
+	}
+}
+
+// Leaderboard snapshots (lb_ver) and transitions (state_ver) share the room hash; neither may clobber the other.
+func TestTransition_ConcurrentWithLeaderboardSnapshots(t *testing.T) {
+	repo := started(t, "u_1")
+	ctx := context.Background()
+	if err := redisx.LoadScripts(ctx, env.Redis, leaderboard.Scripts()...); err != nil {
+		t.Fatal(err)
+	}
+	lb := leaderboard.NewRedisRepository(env.Redis)
+	const snapshots = 50
+	var wg sync.WaitGroup
+	for range snapshots {
+		wg.Go(func() {
+			if _, err := lb.PublishSnapshot(ctx, input.Code); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	for range 10 {
+		wg.Go(func() {
+			if _, err := repo.ApplyTransition(ctx, input.Code); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	wg.Wait()
+	rec, _ := repo.Room(ctx, input.Code)
+	if rec.LeaderboardVersion != snapshots || rec.StateVersion != 2 || rec.Status != quiz.StatusQuestionOpen {
+		t.Errorf("lb_ver %d (want %d), state_ver %d (want 2), status %s", rec.LeaderboardVersion, snapshots, rec.StateVersion, rec.Status)
+	}
 }

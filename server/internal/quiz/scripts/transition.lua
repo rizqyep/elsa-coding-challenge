@@ -1,6 +1,6 @@
 -- transition (TRD §4.4); next_state and top_entries are prepended.
 -- KEYS: room, qids, sched:transitions, sched:flush, sched:lbdirty, lb, roster, room channel
--- ARGV: code, expected_state_ver, top_n
+-- ARGV: code, top_n
 local code = ARGV[1]
 if redis.call('EXISTS', KEYS[1]) == 0 then
   redis.call('ZREM', KEYS[3], code)
@@ -11,8 +11,6 @@ local h = redis.call('HMGET', KEYS[1], 'status', 'q_index', 'q_count', 'window_m
 local r = {status = h[1], q_index = tonumber(h[2]), q_count = tonumber(h[3]), window_ms = tonumber(h[4]),
   reveal_ms = tonumber(h[5]), opened_at = tonumber(h[6]), deadline = tonumber(h[7]), close_at = tonumber(h[8]),
   next_at = tonumber(h[9]), start_requested = h[10] == '1', lobby_expires_at = tonumber(h[11]), state_ver = tonumber(h[12])}
-if r.state_ver ~= tonumber(ARGV[2]) then return {'stale'} end
-
 local t = redis.call('TIME')
 local now = tonumber(t[1]) * 1000 + math.floor(tonumber(t[2]) / 1000)
 local outcome, ev = next_state(r, now)
@@ -40,7 +38,7 @@ elseif ev == 'quiz_finished' or ev == 'quiz_expired' then
 end
 
 if ev == 'quiz_finished' then
-  local entries, count = top_entries(KEYS[6], KEYS[7], tonumber(ARGV[3]))
+  local entries, count = top_entries(KEYS[6], KEYS[7], tonumber(ARGV[2]))
   redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'finished', v = r.state_ver, n = count, top = entries}))
 else
   redis.call('PUBLISH', KEYS[8], cjson.encode({t = 'state', v = r.state_ver, s = r.status, i = r.q_index,

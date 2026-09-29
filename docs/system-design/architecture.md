@@ -51,7 +51,7 @@ flowchart LR
   - They share the same internal modules and scale independently: gateways by connection count, workers by the number of active rooms.
 - **All three are stateless.** Every piece of live quiz state is in Redis. Any gateway can serve any participant of any quiz, so the load balancer needs no sticky sessions (D10, NFR-24, NFR-25).
 - **Rooms are virtual.** A quiz room is a set of Redis keys plus one pub/sub channel. It isn't tied to any process.
-- **No process owns a quiz.** Every worker runs the same loop. Transitions are Lua scripts with a version check, so exactly one worker applies each one (NFR-14).
+- **No process owns a quiz.** Every worker runs the same loop. A transition is one Lua script that checks what is due and applies it atomically, so exactly one worker applies each one (NFR-14).
 - **One clock.** Deadlines and answer receive times come from Redis `TIME` inside the scripts, so there is no clock skew between services.
 - **Broadcast once.** A room update is one pub/sub event, published by the same Lua script that makes the change, so a change can never happen without being announced. Each gateway turns the event into the client message once and writes the same bytes to all its local sockets in that room (NFR-5b, NFR-5c).
 - **Redis keeps only what is live or not yet saved.** Each question's answers are batch-written to PostgreSQL after it closes and removed from Redis once the write is confirmed (FR-33, FR-34).

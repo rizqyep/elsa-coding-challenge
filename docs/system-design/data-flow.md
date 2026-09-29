@@ -82,7 +82,7 @@ sequenceDiagram
     R-->>API: accepted
     API-->>H: 202 Accepted
     W->>R: due transition found on next poll
-    W->>R: transition script, expect version v
+    W->>R: transition script
     Note over R: status question_open, first ID from the question list<br/>deadline = TIME + window, version v+1<br/>reschedule in sched:transitions at deadline<br/>PUBLISH state event, in the same script
     R-->>W: applied
     R-->>ALL: state event, once per subscribed gateway
@@ -173,7 +173,7 @@ sequenceDiagram
     loop every 100 ms, on every worker
         Sx->>R: quiz IDs in sched:transitions due by now
     end
-    Sx->>R: transition script, expect question_open and version v
+    Sx->>R: transition script
     Note over R: re-check TIME against close time<br/>status question_closed, version v+1<br/>schedule next transition at TIME + reveal<br/>add flush job, mark leaderboard dirty<br/>PUBLISH state event, in the same script
     alt this worker won
         R-->>Sx: applied
@@ -182,7 +182,7 @@ sequenceDiagram
         ALL->>R: pipelined rank lookups for local participants
         ALL-->>PS: question_closed, then each participant's own rank
     else another worker already did it
-        R-->>Sx: version mismatch, nothing to do
+        R-->>Sx: not due any more, nothing to do
     end
 
     Sy->>R: claim due flush job, push its retry time 30 s ahead
@@ -192,7 +192,7 @@ sequenceDiagram
     Sy->>R: delete the question's answers, remove the flush job
 ```
 
-- **NFR-14:** several instances may notice the same due quiz. The version check lets exactly one apply the transition; the rest get a version mismatch and do nothing.
+- **NFR-14:** several instances may notice the same due quiz. The script checks what is due and applies it atomically; after the first worker applies it, the next transition is in the future, so the rest get `not_due` and do nothing.
 - **FR-26:** personal ranks are computed once per question, by each instance for its own sockets, in a pipelined batch.
 - **FR-33, FR-34, NFR-13a:**
   - The flush happens after the burst, as one batch per question.

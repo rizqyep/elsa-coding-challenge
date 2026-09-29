@@ -98,21 +98,13 @@ func (r *RedisRepository) DueTransitions(ctx context.Context, now int64, limit i
 	return codes, nil
 }
 
-// ApplyTransition applies the room's due transition, if any, exactly once (NFR-14).
+// ApplyTransition applies the room's due transition, if any. The script decides and applies
+// atomically, so competing workers apply each transition once (NFR-14, TRD §3.3).
 func (r *RedisRepository) ApplyTransition(ctx context.Context, code Code) (TransitionResult, error) {
-	ver, err := r.rdb.HGet(ctx, redisx.RoomKey(string(code)), "state_ver").Int64()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return TransitionResult{}, fmt.Errorf("read state version: %w", err)
-	}
-	return r.ApplyTransitionAt(ctx, code, ver)
-}
-
-// ApplyTransitionAt applies the transition only if the room is still at state version ver.
-func (r *RedisRepository) ApplyTransitionAt(ctx context.Context, code Code, ver int64) (TransitionResult, error) {
 	c := string(code)
 	keys := []string{redisx.RoomKey(c), redisx.QuestionIDsKey(c), redisx.SchedTransitions, redisx.SchedFlush,
 		redisx.SchedLeaderboardDirty, redisx.LeaderboardKey(c), redisx.RosterKey(c), redisx.RoomChannel(c)}
-	reply, err := transitionScript.Run(ctx, r.rdb, keys, c, ver, TopN).Slice()
+	reply, err := transitionScript.Run(ctx, r.rdb, keys, c, TopN).Slice()
 	if err != nil {
 		return TransitionResult{}, fmt.Errorf("transition: %w", err)
 	}

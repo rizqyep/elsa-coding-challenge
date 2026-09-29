@@ -1,6 +1,6 @@
 package quiz
 
-// Stale means another worker already applied this transition, or the room is gone.
+// Stale means the room no longer exists.
 const Stale Outcome = "stale"
 
 // TopN is how many entries room events carry (FR-26).
