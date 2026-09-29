@@ -1,5 +1,5 @@
 # Local stack. Start with `make up`; see docs/planning/trd.md §11.
-# Data stores; the migrate service, Go services, nginx, and profiles arrive in later tasks.
+# Data stores and the one-shot migrate service; the Go services, nginx, and profiles arrive in task-25.
 name: quiz
 
 services:
@@ -31,6 +31,22 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+
+  migrate:
+    # One-shot: run by `make up` (or `make migrate`) after the data stores are healthy.
+    # Kept out of plain `docker compose up`, whose --wait treats an exited container as a failure.
+    profiles: ["tools"]
+    build:
+      context: ./server
+      args:
+        CMD: migrate
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      POSTGRES_DSN: ${POSTGRES_DSN}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   redis-data:
