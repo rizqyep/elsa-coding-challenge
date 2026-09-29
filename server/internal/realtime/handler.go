@@ -42,7 +42,7 @@ type FinalResults interface {
 	Final(ctx context.Context, code quiz.Code, participantID quiz.ParticipantID) (leaderboard.Final, error)
 }
 
-// Clock gives Redis-aligned time (RedisClock).
+// Clock gives Redis-aligned time (redisx.Clock).
 type Clock interface{ NowMs() int64 }
 
 // HandlerDeps are what the message handler works with.

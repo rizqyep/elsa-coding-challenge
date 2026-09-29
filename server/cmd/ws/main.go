@@ -101,7 +101,7 @@ type gateway struct {
 	sub      *realtime.Subscriber
 	hub      *realtime.Hub
 	sessions *session.RedisRepository
-	clock    *realtime.RedisClock
+	clock    *redisx.Clock
 	presence time.Duration
 	log      *slog.Logger
 }
@@ -118,7 +118,7 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	sub := realtime.NewSubscriber(rdb, hub, realtime.SubscriberOptions{Log: log})
 	hub.Attach(sub)
 
-	clock := realtime.NewRedisClock(func(ctx context.Context) (time.Time, error) { return rdb.Time(ctx).Result() })
+	clock := redisx.ClockFor(rdb)
 	if err := clock.Sync(ctx); err != nil {
 		return nil, fmt.Errorf("redis time: %w", err)
 	}

@@ -63,8 +63,7 @@ server/
 │   ├── session/               # join, roster, presence, connection replacement
 │   ├── history/               # answer and final-result flushes, reconciliation
 │   ├── scheduler/             # claim loops: transitions, leaderboard ticks, flush jobs
-│   ├── realtime/              # WebSocket conn, read/write loops, registry, dispatcher
-│   ├── fanout/                # room channel publish/subscribe
+│   ├── realtime/              # WebSocket conn, read/write loops, registry, handlers, room subscriber
 │   ├── protocol/              # WebSocket message types + codec (match docs/api/schemas)
 │   ├── httpapi/               # REST handlers; gen/ holds oapi-codegen output
 │   ├── auth/                  # token issue (dev) and verification

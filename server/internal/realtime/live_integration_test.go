@@ -328,7 +328,7 @@ func startLive(t *testing.T) *live {
 		RatePerSec: 50, RateBurst: 50, AdmissionPerSec: 1000, MaxConnections: 1000}, tokens,
 		realtime.NewMessageHandler(realtime.HandlerDeps{Hub: hub, Joiner: sessions, Rooms: quizzes,
 			Answers: scoring.NewService(scoring.NewRedisRepository(tenv.Redis, scoring.RedisOptions{OnlineWindow: 30 * time.Second, TTL: time.Hour}), time.Second),
-			Finals:  leaderboard.NewPostgresStore(tenv.Postgres), Clock: realtime.NewRedisClock(func(ctx context.Context) (time.Time, error) { return tenv.Redis.Time(ctx).Result() }), DataTTL: time.Hour}), nil)
+			Finals:  leaderboard.NewPostgresStore(tenv.Postgres), Clock: redisx.ClockFor(tenv.Redis), DataTTL: time.Hour}), nil)
 	srv := httptest.NewServer(gw)
 	t.Cleanup(srv.Close)
 	return &live{t: t, srv: srv, tokens: tokens, quizzes: quizzes, hub: hub}
