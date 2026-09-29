@@ -31,6 +31,8 @@ Written before the implementation and reviewed by me before any code is written 
 
 ## Done when
 
+- [ ] question cache (task-17) wired in: `Acquire` on a room's first local connection, `Release` when its last one leaves
+- [ ] **snapshot pushes after a subscriber reconnect are coalesced per room** (one room-state read shared by the room's connections), so a pub/sub reconnect doesn't send every connection's snapshot read to Redis at once (TRD §7.10)
 - [ ] registry + subscriber + event mapper
 - [ ] tests pass
 - [ ] `make check` green

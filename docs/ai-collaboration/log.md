@@ -531,3 +531,37 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - 7 mutations caught with a 60 s backstop timeout.
   - Repeated and shuffled runs.
   - `make check` and the integration suite are green.
+
+### AI-029: Gateway connections and burst protection (task-18)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:**
+  - I asked whether single-flight was really proven, i.e. that a join burst costs one PostgreSQL read.
+  - I asked that task-18 not "fry the WebSocket server on a join burst".
+  - Mid-task I added that avoiding the database load isn't enough: the next thing that can bring the system down is a **cache stampede**.
+- **What the AI answered on single-flight:** yes, with three caveats I hadn't made explicit:
+  - The proof is a unit test with a mocked loader (1,000 concurrent joins → 1 load; the no-single-flight mutant was caught). A real burst over sockets is proven in task-29.
+  - It is one read **per gateway**, not per system.
+  - It only covers question content. Each join still runs one Redis `join` script, and that is the burst cost task-18 has to bound.
+- **What the AI produced:**
+  - A list of every shared dependency a burst could pile onto, and a guard for each (TRD §7.10).
+  - The gateway's connection layer: checks before the upgrade (origin, token, the new `WS_MAX_CONNECTIONS` cap, the admission bucket, jittered `Retry-After`); a read loop on the handler goroutine and a single writer; a non-blocking send queue; the slow-client policy; rate limiting; heartbeats; close handling.
+- **Stampedes the AI found beyond the question cache**, which follow from my stampede point:
+  - **Resync stampede.** When Redis stalls, every connection's queue overflows at once, and each resync reads a snapshot from Redis, exactly when Redis is weakest. Fixed with 32 gateway-wide resync slots plus 0–250 ms jitter. The TRD had no guard for this.
+  - **Subscriber-reconnect stampede.** TRD §9.3 pushes a snapshot to every local connection after a pub/sub reconnect. Carried into task-19 as a requirement to coalesce snapshot reads per room.
+  - **Rejected clients retrying together.** `Retry-After` is jittered.
+- **Other catches:**
+  - **Docs drift:** the AsyncAPI spec said a bad origin closes with 1008 and admission closes with 1013, while the TRD rejects both before the upgrade (cheaper under a burst). The spec was corrected.
+  - **Browsers can't read a failed handshake's HTTP status**; every rejection looks like close 1006. So `Retry-After` only helps non-browser clients, and the React client must refresh its token before expiry instead of waiting for a 401 (TRD §9.5).
+  - **Close must not block:** gorilla's `WriteControl` waits for the write lock, which a stalled writer holds. The AI made the fake socket behave the same way so the test would catch a blocking close.
+- **What the AI got wrong:**
+  - **The deadline rule from AI-028 wasn't applied.** Two new tests (a blocking send, a synchronous close) caught their mutants only as 60 s hangs. Both now run the risky call under a 2 s deadline and fail in about 2 s.
+  - **A racy test:** one test sent a frame before the resync had run, while the connection was correctly dropping frames. The code was right; the test now waits for the resync.
+  - **Two invalid mutants:** one still took a resync slot, so it stayed bounded ("missed" for the wrong reason); one didn't compile. Both were redone and caught.
+  - The linter flagged unclosed handshake response bodies in the tests; the dial helper now closes them.
+- **Verification:**
+  - Tests were written first and confirmed failing.
+  - Real-socket tests and deterministic fake-socket tests all pass under `-race`, 3 runs.
+  - 14 mutations caught by test failures in 1–7 s.
+  - An in-process measurement: 2 goroutines and at most 33.5 KB per idle connection, server and client together, against the 50 KB budget.
+  - `make check` is green.
