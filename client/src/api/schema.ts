@@ -238,7 +238,7 @@ export interface components {
             lobbyExpiresAt?: string;
             /**
              * Format: date-time
-             * @description Present once finished.
+             * @description Present once the final results are saved.
              */
             finishedAt?: string;
         };
@@ -399,6 +399,23 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description Unexpected server error (a bug); logged with the request ID */
+        Internal: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                /**
+                 * @example {
+                 *       "type": "about:blank",
+                 *       "title": "Internal Server Error",
+                 *       "status": 500,
+                 *       "code": "internal"
+                 *     }
+                 */
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description A dependency is unavailable; safe to retry after `Retry-After` */
         Unavailable: {
             headers: {
@@ -452,6 +469,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
         };
     };
     listQuestionSets: {
@@ -492,6 +510,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["Internal"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -530,6 +549,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -553,8 +573,10 @@ export interface operations {
                     "application/json": components["schemas"]["Quiz"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -578,10 +600,12 @@ export interface operations {
                     "application/json": components["schemas"]["StartAccepted"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["Internal"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -608,8 +632,10 @@ export interface operations {
                     "application/json": components["schemas"]["LeaderboardPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["Internal"];
             503: components["responses"]["Unavailable"];
         };
     };

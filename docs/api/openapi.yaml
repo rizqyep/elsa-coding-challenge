@@ -19,7 +19,7 @@ servers:
     description: Local stack (nginx routes /api to the REST API)
 tags:
   - name: dev
-    description: Mocked identity provider. Disabled in production.
+    description: Mocked identity provider. Disabled when `DEV_TOKENS_ENABLED=false`.
   - name: quizzes
     description: Create and start quizzes, read status and leaderboards.
   - name: ops
@@ -51,6 +51,7 @@ paths:
               schema: { $ref: '#/components/schemas/DevToken' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /api/v1/question-sets:
     get:
@@ -76,6 +77,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/Unavailable' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /api/v1/quizzes:
     post:
@@ -104,6 +106,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /api/v1/quizzes/{code}:
     parameters:
@@ -119,9 +122,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Quiz' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /api/v1/quizzes/{code}/start:
     parameters:
@@ -140,11 +145,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/StartAccepted' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /api/v1/quizzes/{code}/leaderboard:
     parameters:
@@ -167,9 +174,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LeaderboardPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
+        '500': { $ref: '#/components/responses/Internal' }
 
   /healthz:
     get:
@@ -271,7 +280,7 @@ components:
         revealSeconds: { type: integer }
         createdAt: { type: string, format: date-time }
         lobbyExpiresAt: { type: string, format: date-time, description: Present while in the lobby. }
-        finishedAt: { type: string, format: date-time, description: Present once finished. }
+        finishedAt: { type: string, format: date-time, description: Present once the final results are saved. }
       example:
         code: K7Q2MX
         questionSetId: demo-quick
@@ -378,6 +387,12 @@ components:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
           example: { type: about:blank, title: Conflict, status: 409, code: no_participants }
+    Internal:
+      description: Unexpected server error (a bug); logged with the request ID
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+          example: { type: about:blank, title: Internal Server Error, status: 500, code: internal }
     Unavailable:
       description: A dependency is unavailable; safe to retry after `Retry-After`
       headers:

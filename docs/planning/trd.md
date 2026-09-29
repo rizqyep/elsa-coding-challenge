@@ -621,12 +621,13 @@ The contracts are real files, written before the code (D13). This section explai
 | `POST /api/v1/dev/tokens` | anyone (dev only) | 201 token | 404 when disabled |
 | `GET /api/v1/question-sets` | host | 200 list | 403 |
 | `POST /api/v1/quizzes` | host | 201 quiz in lobby | 404 `question_set_not_found`, 503 |
-| `GET /api/v1/quizzes/{code}` | any token | 200 quiz | 404 `unknown_quiz` |
-| `POST /api/v1/quizzes/{code}/start` | the quiz's host | 202 start accepted (idempotent) | 403 `not_host`, 409 `not_in_lobby` / `no_participants` |
-| `GET /api/v1/quizzes/{code}/leaderboard?offset&limit` | any token | 200 page (live from Redis, final from PostgreSQL) | 404 |
+| `GET /api/v1/quizzes/{code}` | any token | 200 quiz (live from Redis, archived from PostgreSQL) | 400 bad code, 404 `unknown_quiz` |
+| `POST /api/v1/quizzes/{code}/start` | the quiz's host | 202 start accepted (idempotent while running) | 400, 403 `forbidden` / `not_host`, 409 `not_in_lobby` / `no_participants` |
+| `GET /api/v1/quizzes/{code}/leaderboard?offset&limit` | any token | 200 page (live from Redis, final from PostgreSQL) | 400 bad code or range, 404 |
 | `GET /healthz`, `GET /readyz` | none | 200 / 503 | — |
 
-- Errors are RFC 9457 problem details with a machine-readable `code`.
+- Errors are RFC 9457 problem details with a machine-readable `code`. Every API operation also documents 500 `internal` (a bug; no detail is returned).
+- Every request is routed, authenticated, then validated against `openapi.yaml` before a handler runs; an operation without an access rule stops the API from starting.
 - Dependency outages return 503 with `Retry-After`.
 - REST timestamps are RFC 3339. WebSocket timestamps are epoch milliseconds, because clients compute countdowns from them.
 
@@ -824,6 +825,7 @@ Every call carries a `context` deadline. Nothing waits forever.
 | Question-set load (PostgreSQL) | 2 s per attempt, 10 s budget | §9.3 |
 | Answer batch insert | 10 s | Up to 10,000 rows |
 | Finalise transaction | 15 s | Results + reconciliation |
+| REST request | 5 s | Whole handler, including the create transaction |
 | Socket write | 10 s per frame | A stuck socket is closed, not waited on |
 
 ### 9.3 Retry policy
