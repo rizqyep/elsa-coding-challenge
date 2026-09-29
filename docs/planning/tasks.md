@@ -131,9 +131,9 @@ flowchart LR
 | [task-03](tasks/p0-foundation/task-03-data-stores-in-docker-compose.md) | Data stores in Docker Compose | P0 | S | — | done |
 | [task-04](tasks/p0-foundation/task-04-migrations-and-seed-data.md) | Migrations and seed data | P0 | S | test | done |
 | [task-05](tasks/p0-foundation/task-05-code-generation-and-contract-checks.md) | Code generation and contract checks | P0 | M | test | done |
-| [task-06](tasks/p1-domain/task-06-identifiers-quiz-codes-validation.md) | Identifiers, quiz codes, validation | P1 | S | yes | done (review pending) |
-| [task-07](tasks/p1-domain/task-07-scoring-and-ranks.md) | Scoring and ranks | P1 | S | yes | done (review pending) |
-| [task-08](tasks/p1-domain/task-08-quiz-state-machine.md) | Quiz state machine | P1 | M | yes | done (review pending) |
+| [task-06](tasks/p1-domain/task-06-identifiers-quiz-codes-validation.md) | Identifiers, quiz codes, validation | P1 | S | yes | done |
+| [task-07](tasks/p1-domain/task-07-scoring-and-ranks.md) | Scoring and ranks | P1 | S | yes | done |
+| [task-08](tasks/p1-domain/task-08-quiz-state-machine.md) | Quiz state machine | P1 | M | yes | done |
 | [task-09](tasks/p1-domain/task-09-protocol-package.md) | Protocol package | P1 | M | yes | todo |
 | [task-10](tasks/p2-redis-scripts/task-10-integration-test-harness.md) | Integration test harness | P2 | S | — | todo |
 | [task-11](tasks/p2-redis-scripts/task-11-scripts-create-room-start-join.md) | Scripts: `create_room`, `start`, `join` | P2 | M | yes | todo |

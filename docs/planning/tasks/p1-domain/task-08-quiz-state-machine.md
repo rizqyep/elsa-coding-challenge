@@ -2,7 +2,7 @@
 
 - **Phase:** P1 Domain (TDD)
 - **Size:** M · **TDD:** yes
-- **Status:** done (awaiting my code review)
+- **Status:** done (reviewed and approved by me, 2026-09-29)
 - **Implements:** TRD §3.3, §3.7 · FR-2, FR-3, FR-4, FR-5, FR-6, FR-7
 - **Depends on:** [task-01](../p0-foundation/task-01-repository-scaffold.md)
 - **Unblocks:** [task-10](../p2-redis-scripts/task-10-integration-test-harness.md)

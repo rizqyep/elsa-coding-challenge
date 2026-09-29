@@ -371,3 +371,4 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Comment cleanup (my request):** explanatory comments were cut to one-liners pointing to the TRD or the vector files. The rule is now in TRD §1.4 and saved as a standing preference.
 - **Deviation noted for review:** scoring uses integer milliseconds (`int64`) rather than the `time.Time` sketched in TRD §3.4, so Go and Lua do identical arithmetic on identical inputs.
 - **Verification:** `make check` green after each task commit and after the comment cleanup.
+- **My review:** approved all three tasks. I agreed with the three state-machine rules the vectors made explicit (start wins over lobby expiry; full reveal after a late close; full answer window for a late-opened question) and judged the scoring solid.
