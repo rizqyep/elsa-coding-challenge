@@ -372,3 +372,19 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Deviation noted for review:** scoring uses integer milliseconds (`int64`) rather than the `time.Time` sketched in TRD §3.4, so Go and Lua do identical arithmetic on identical inputs.
 - **Verification:** `make check` green after each task commit and after the comment cleanup.
 - **My review:** approved all three tasks. I agreed with the three state-machine rules the vectors made explicit (start wins over lobby expiry; full reveal after a late close; full answer window for a late-opened question) and judged the scoring solid.
+
+### AI-021: Protocol package (task-09)
+
+- **Date / phase:** 2026-09-29 · P1 domain
+- **Task type:** TDD implementation
+- **What I asked:** continue with task-09 and commit atomically as usual; I had verified the previous code.
+- **Design decision proposed by the AI, applied, and recorded for my review:**
+  - Validate client frames against the JSON Schemas **at runtime** instead of hand-written Go checks, so the gateway and the contract can't drift. The cost is small at our client message rates.
+  - Consequence: the server is strict about unknown fields in client frames, and the forward-compatibility rule ("ignore unknown fields") applies to clients reading server messages. This replaced the task's original "unknown fields ignored on decode" item.
+- **Catches:**
+  - The AI's first test draft named error-code constants `Err…`, which in Go signals an `error` value. Renamed to `Code…` before implementing.
+  - It removed a pointless decode in one test.
+- **Verification:**
+  - Tests written first and confirmed red.
+  - All passed on the first run, so **four mutation checks** confirmed each safety net can fail: a `quiz.Question` reference in the protocol package; `top: null` for empty lists; skipping schema validation; a dropped error code. All four were caught by their intended tests, and all files were verified restored byte-for-byte.
+  - `make check` green.
