@@ -738,3 +738,16 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **How the AI showed the checks can fail:** a throwaway scenario with +150 ms of Redis latency failed NFR-7 and exited 1, and the simulator cleaned up its toxic afterwards.
 - **What the AI got wrong, found by running it:** the k6 WebSocket import (`k6/websockets` doesn't exist in k6 1.3; probing the image found `k6/experimental/websockets`), and the container fallback writing a root-owned, unreadable report. Both fixed and rerun.
 - **Verification:** small runs of `big-room` (every check PASS), the failing scenario (exit 1), k6 (100 players, all thresholds met), and the fallback before and after the ownership fix. `make check` green.
+
+### AI-040: Load runs and results (task-29)
+
+- **Date / phase:** 2026-09-30 · P5 Stack and verification
+- **What the AI produced:** runs of all five scenarios at 5,000 and 10,000 participants, `docs/testing.md`, measured values in `non-functional.md`, and fixes for what the runs exposed.
+- **How it found the bottlenecks, and what it got wrong on the way:**
+  - The first 5,000 run failed with multi-second latencies. Instead of blaming the stack, the AI compared the gateways' own histograms (answers recorded within 50 ms) with client-observed times, then profiled the simulator: 44% of its CPU was schema validation. The load generator was the bottleneck. After sampling validation, the same run passed every target.
+  - At 10,000 it suspected a shared lock in the simulator, and a mutex profile confirmed heavy contention. Fixing it cut contention about 150× but latency only slightly, and the AI said so rather than claiming the fix.
+  - It then tested three suspects by experiment instead of assuming: 4 gateways (little change), nginx worker balance (even), and Redis CPU (low). It was about to add `reuseport` to nginx, but measured the workers first; the hypothesis was wrong. `/proc/stat` during a burst finally showed the whole machine at ~95%.
+- **A security finding from the load:** nginx's descriptor-exhaustion alert logged request lines with tokens, contradicting the task-25 claim. The AI tightened the error log, corrected the TRD and the task-25 notes, and put the lasting fix (moving the token out of the URL) to me as a D15 decision.
+- **Harness mistakes caught before they reached the docs:** a late-answer check that flagged the legitimate early-closing answer (5 false violations; the rule was read from the Lua script, then fixed with a test); reports written outside the repo because the default path depended on the working directory; and a report picked by timestamp that turned out to be the wrong run, caught by reading each report's contents.
+- **Estimates corrected by measurement:** the answer script costs ≈ 62 µs (estimated 20–25), so the Redis ceiling is ≈ 16,000 answers/s (estimated 40,000). Memory per connection ≈ 25 KB heap / 41 KB resident.
+- **Verification:** every cited number traces to a committed report, a profile, or a metric read during a run.

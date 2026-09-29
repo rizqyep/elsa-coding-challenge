@@ -45,11 +45,14 @@ Needs Go 1.26+ and Node 22+.
 ```bash
 make check              # lint, unit tests, contract checks, generated-code freshness
 make test-integration   # against real Redis, PostgreSQL, and Toxiproxy (Docker)
+make test-e2e           # end-to-end and fault tests against the running stack (make up PROFILES=chaos first)
+make sim SCENARIO=big-room PARTICIPANTS=5000   # a load scenario, checked against the NFR targets
 ```
 
 ## Documentation
 
 - [System design](docs/system-design/README.md): architecture, data flow, technology choices, non-functional design
 - [API contracts](docs/api/): `openapi.yaml` (REST), `asyncapi.yaml` (WebSocket), JSON Schemas
+- [Testing and load results](docs/testing.md): test layers, how to run them, and what 5,000 and 10,000 players measured
 - [Planning](docs/planning/index.md): requirements, TRD, and the task board
 - [AI collaboration](docs/ai-collaboration/index.md): how AI was used and how its output was verified

@@ -1073,7 +1073,7 @@ Prerequisites: Docker with Compose v2.23+ (for `--wait` on a stack with a one-sh
 
 | Service | Replicas (default) | Port on host | Notes |
 |---|---|---|---|
-| `nginx` | 1 | **8080** (`HTTP_HOST_PORT`) | Serves the built client at `/`, routes `/api` → api, `/ws` → ws. Upstreams use `server … resolve` (nginx 1.27.3+) with Docker's DNS re-read every 5 s, so `make scale` adds and removes instances without a reload (confirmed in task-25: with a static `server` line new gateways got 0 connections). `/ws` uses `least_conn`, since sockets are long-lived. The access log uses `$uri`, so query strings (tokens, D15) are never logged; the error log is `crit` only because error-level lines quote the full request |
+| `nginx` | 1 | **8080** (`HTTP_HOST_PORT`) | Serves the built client at `/`, routes `/api` → api, `/ws` → ws. Upstreams use `server … resolve` (nginx 1.27.3+) with Docker's DNS re-read every 5 s, so `make scale` adds and removes instances without a reload (confirmed in task-25: with a static `server` line new gateways got 0 connections). `/ws` uses `least_conn`, since sockets are long-lived. The access log uses `$uri`, so query strings (tokens, D15) aren't in it. Every error, crit, and alert line quotes the full request, token included, so the error log is `emerg` only (task-29 found a descriptor-exhaustion alert leaking tokens at `crit`). `worker_rlimit_nofile 65536` and a 65,536 `nofile` ulimit: each proxied WebSocket holds two descriptors |
 | `api` | 1 | — | |
 | `ws` | 2 | — | `nofile` ulimit 65,536 |
 | `worker` | 2 | — | |

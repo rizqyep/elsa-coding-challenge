@@ -1,0 +1,143 @@
+{
+  "checks": [
+    {
+      "Name": "clean",
+      "Target": "all joined and finished, no protocol violations, no failed steps",
+      "Actual": "10000/10000 joined, 10000 finished, 0 violations, 0 step errors",
+      "Pass": true
+    },
+    {
+      "Name": "nfr6",
+      "Target": "p95 answer → leaderboard at every client \u003c 500ms",
+      "Actual": "3.25032874s",
+      "Pass": false
+    },
+    {
+      "Name": "nfr7",
+      "Target": "p95 answer → result \u003c 100ms, p99 \u003c 250ms",
+      "Actual": "p95 1.107486621s, p99 1.641151465s",
+      "Pass": false
+    },
+    {
+      "Name": "nfr8",
+      "Target": "p95 question opened → delivered \u003c 200ms",
+      "Actual": "460.671311ms",
+      "Pass": false
+    },
+    {
+      "Name": "nfr9",
+      "Target": "p95 join → snapshot \u003c 300ms",
+      "Actual": "11.089047ms",
+      "Pass": true
+    },
+    {
+      "Name": "reconciliation",
+      "Target": "0 point or total mismatches, score_reconciliation_mismatches_total 0",
+      "Actual": "0 mismatches, metric 0",
+      "Pass": true
+    },
+    {
+      "Name": "no-errors",
+      "Target": "0 error messages",
+      "Actual": "map[]",
+      "Pass": true
+    }
+  ],
+  "config": {
+    "answerWithin": "2s",
+    "chaos": null,
+    "correctRatio": 0.7,
+    "joinRampUp": "20s",
+    "noAnswerRatio": 0.02,
+    "participantsPerRoom": 10000,
+    "questionSet": "demo-quick",
+    "reveal": "3s",
+    "roomStagger": "0s",
+    "rooms": 1,
+    "seed": 1,
+    "slowClients": 0,
+    "window": "10s"
+  },
+  "machine": {
+    "cpu": "AMD Ryzen 5 4600H with Radeon Graphics",
+    "cpus": 12,
+    "go": "go1.26.8-X:nodwarf5",
+    "goos": "linux",
+    "kernel": "7.1.10-200.fc44.x86_64",
+    "memory": "16226620 kB"
+  },
+  "overrides": [
+    "participants=10000"
+  ],
+  "pass": false,
+  "results": {
+    "accepted": 29408,
+    "answersSent": 29408,
+    "closes": {},
+    "duplicates": 0,
+    "errors": {},
+    "finished": 10000,
+    "joined": 10000,
+    "nfr6": {
+      "count": 29408,
+      "max_ms": 3805.661,
+      "p50_ms": 1223.995,
+      "p95_ms": 3250.328,
+      "p99_ms": 3568.605
+    },
+    "nfr7": {
+      "count": 29408,
+      "max_ms": 3291.517,
+      "p50_ms": 111.933,
+      "p95_ms": 1107.486,
+      "p99_ms": 1641.151
+    },
+    "nfr8": {
+      "count": 30000,
+      "max_ms": 961.665,
+      "p50_ms": 69.302,
+      "p95_ms": 460.671,
+      "p99_ms": 590.769
+    },
+    "nfr9": {
+      "count": 10000,
+      "max_ms": 700.324,
+      "p50_ms": 0.764,
+      "p95_ms": 11.089,
+      "p99_ms": 67.724
+    },
+    "participants": 10000,
+    "pointMismatches": null,
+    "quizCodes": [
+      "KD25FV"
+    ],
+    "reconciliationMetric": 0,
+    "reconnects": 0,
+    "rejoin": {
+      "count": 0,
+      "max_ms": 0,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0
+    },
+    "stale": 0,
+    "stepErrors": null,
+    "totalMismatches": null,
+    "transitionLag": {
+      "count": 2,
+      "max_ms": 63,
+      "p50_ms": 0,
+      "p95_ms": 63,
+      "p99_ms": 63
+    },
+    "violations": null
+  },
+  "scenario": "big-room",
+  "seconds": 60.606809598,
+  "stack": {
+    "baseURL": "http://172.18.0.9:8080",
+    "gateways": 2,
+    "workers": 2
+  },
+  "startedAt": "2026-09-29T18:53:21.267563973Z"
+}

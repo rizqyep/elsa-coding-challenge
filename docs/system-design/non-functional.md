@@ -2,7 +2,7 @@
 
 How the design meets the non-functional requirements (NFR-n in [`../planning/requirements.md`](../planning/requirements.md)), where its limits are, and what it gives up. Components and flows are in [`architecture.md`](architecture.md) and [`data-flow.md`](data-flow.md).
 
-> **All capacity numbers in this document are estimates** from typical per-operation costs, used to find the bottleneck and set test targets. The load test and room simulator replace them with measured values, reported in `docs/testing.md` alongside the machine they ran on.
+> **Capacity numbers were first estimated** from typical per-operation costs, to find the bottleneck and set test targets. The load runs (task-29) measured them; where they differ, the measured value is given here and the details are in [`docs/testing.md`](../testing.md) with the machine they ran on.
 
 ## 1. Scalability
 
@@ -24,7 +24,7 @@ The hard part is **concurrency inside one room**, not data volume (requirements,
 
 | Work | Rate during burst | Estimated cost |
 |---|---|---|
-| Answer script (≈ 8 commands: state read, `TIME`, `HSETNX`, `ZINCRBY`, `SADD`, counts) | 5,000/s | ≈ 20 µs each → **≈ 10% of one Redis core** |
+| Answer script (≈ 8 commands: state read, `TIME`, `HSETNX`, `ZINCRBY`, `SADD`, counts) | 5,000/s | estimated ≈ 20 µs; **measured ≈ 62 µs** (inner commands ≈ 17 µs, the rest Lua and script-call overhead) → **≈ 30% of one Redis core** |
 | Leaderboard snapshot (top 10, count, version) + roster lookup for 10 names | ≤ 5/s | negligible |
 | `PUBLISH` of a room message | ≤ 5/s + transitions | one delivery per subscribed **gateway**, not per participant |
 | Personal ranks at question close | 10,000 lookups per question, pipelined per gateway | ≈ 10–20 ms of Redis time per question |
@@ -35,9 +35,9 @@ The hard part is **concurrency inside one room**, not data volume (requirements,
 
 | Work | Estimate |
 |---|---|
-| Memory per idle connection: 2 goroutines, 1 KB read buffer, pooled write buffer (none held when idle), queue slots | ≈ 20–30 KB → **≈ 0.5 GB for 20,000 connections** (budget ≤ 50 KB, NFR-4). TLS is terminated at the load balancer, so there are no TLS buffers in the gateway |
-| Leaderboard egress: ~1 KB × 10,000 recipients × 5/s | **≈ 50 MB/s (≈ 400 Mbit/s) across all gateways holding the room**, only during the few seconds scores change |
-| Socket writes for that egress: 50,000 prepared-message writes/s | ≈ 0.25 core in total |
+| Memory per idle connection: 2 goroutines, 1 KB read buffer, pooled write buffer (none held when idle), queue slots | **measured ≈ 25 KB heap, ≈ 41 KB resident** (after a forced GC, about 5,000 connections per gateway) → ≈ 0.8 GB for 20,000 connections, within the 50 KB budget (NFR-4). TLS is terminated at the load balancer, so there are no TLS buffers in the gateway |
+| Leaderboard egress: ≈ 1 KB (measured 1,035 bytes at most) × 10,000 recipients × 5/s | **≈ 50 MB/s (≈ 400 Mbit/s) across all gateways holding the room**, only during the few seconds scores change |
+| Socket writes for that egress: 50,000 prepared-message writes/s | estimated ≈ 0.25 core; measured: two thirds of each gateway's CPU during bursts is write syscalls (one per message per socket), about one core per gateway at 5,000 sockets |
 | Question broadcast: ~0.5 KB × 10,000, once per question | negligible |
 
 **Workers:** about 1 transition every 10 s per room, and ≤ 5 leaderboard snapshots per second during bursts. Polling costs ≈ 16 Redis calls per second per worker, regardless of room count.
@@ -46,17 +46,17 @@ The hard part is **concurrency inside one room**, not data volume (requirements,
 
 ### 1.3 The ceiling with one Redis primary + replica
 
-The shared resource is the single Redis thread that runs the answer scripts. At ≈ 20–25 µs per script, **one Redis primary handles roughly 40,000 answers per second**. What that means:
+The shared resource is the single Redis thread that runs the answer scripts. The estimate was ≈ 20–25 µs per script (≈ 40,000 answers per second); **the load runs measured ≈ 62 µs, so one Redis primary handles roughly 16,000 answers per second**. What that means:
 
-| Scenario | Estimated ceiling |
+| Scenario | Ceiling (from the measured script cost) |
 |---|---|
-| **One room**, everyone answering within 2 s | ≈ 80,000 participants before Redis saturates. Well above the 10,000 target, so **for a single room the gateways' leaderboard egress limits first, not Redis** |
-| **Many rooms with bursts aligned** (worst case: every room answers in the same 2 s) | ≈ 80,000 participants answering at once across all rooms |
-| **Many rooms with bursts spread out** (rooms start at different times, one answer per participant per ~20 s cycle) | ≈ 800,000 concurrent participants |
-| Gateways needed at that point | 800,000 / 20,000 = 40 gateways. They scale linearly because they share nothing |
+| **One room**, everyone answering within 2 s | ≈ 32,000 participants before Redis saturates (estimated 80,000). Still above the 10,000 target |
+| **Many rooms with bursts aligned** (worst case: every room answers in the same 2 s) | ≈ 32,000 participants answering at once across all rooms |
+| **Many rooms with bursts spread out** (rooms start at different times, one answer per participant per ~20 s cycle) | ≈ 320,000 concurrent participants (estimated 800,000) |
+| Gateways needed at that point | 320,000 / 20,000 = 16 gateways. They scale linearly because they share nothing |
 | Redis memory | not a constraint: ≈ 4 MB per 10,000-person room |
 
-**Our stated ceiling for this design:** one room of 10,000 (target) up to ~50,000 before leaderboard egress needs the mitigations in §1.4, and **around 40,000 answers per second across the whole system** before Redis must be sharded. The load test checks the per-script cost behind this number.
+**Our stated ceiling for this design:** one room of 10,000 (target), and **around 16,000 answers per second across the whole system** before Redis must be sharded (§1.4). Measured on one machine: 5,000 in one room and 200 rooms × 50 meet every latency target; 10,000 in one room is scored correctly with server-side times in target, but the single test machine ran out of CPU before client-observed latency could be confirmed ([testing §4.4](../testing.md#44-one-machine-at-10000-in-one-room-documented-not-fixed)). The cheapest next step for Redis is cutting script overhead (fewer calls per answer, or moving the early-close check out of the hot path) before sharding.
 
 ### 1.4 What breaks first, and the next step
 
@@ -72,12 +72,14 @@ The shared resource is the single Redis thread that runs the answer scripts. At 
 
 ### 2.1 Latency budgets
 
-| Requirement | Path | Budget (estimate) | Target |
-|---|---|---|---|
-| NFR-7: answer → result to submitter | validate (µs) + 1 Redis round trip incl. script (≈ 1 ms) + reply | **≈ 2–5 ms** typical | p95 < 100 ms |
-| NFR-6: answer → leaderboard at every participant | wait for next tick (≤ 200 ms, avg 100) + snapshot + publish (≈ 2 ms) + pub/sub delivery (≈ 1 ms) + fan-out to local sockets (≈ 10–50 ms) | **≈ 260 ms worst case** | p95 < 500 ms |
-| NFR-8: question open → every participant | transition + publish + fan-out | **≈ 50 ms** | p95 < 200 ms spread |
-| NFR-9: join → snapshot | join script + snapshot (+ one database read if this gateway hasn't cached the question set yet) | **≈ 5–20 ms** | p95 < 300 ms |
+| Requirement | Path | Budget (estimate) | Measured p95, 5,000 in one room | Target |
+|---|---|---|---|---|
+| NFR-7: answer → result to submitter | validate (µs) + 1 Redis round trip incl. script (≈ 1 ms) + reply | **≈ 2–5 ms** typical | 50 ms client-observed (≤ 5 ms in Redis) | p95 < 100 ms |
+| NFR-6: answer → leaderboard at every participant | wait for next tick (≤ 200 ms, avg 100) + snapshot + publish (≈ 2 ms) + pub/sub delivery (≈ 1 ms) + fan-out to local sockets (≈ 10–50 ms) | **≈ 260 ms worst case** | 288 ms | p95 < 500 ms |
+| NFR-8: question open → every participant | transition + publish + fan-out | **≈ 50 ms** | 133 ms | p95 < 200 ms spread |
+| NFR-9: join → snapshot | join script + snapshot (+ one database read if this gateway hasn't cached the question set yet) | **≈ 5–20 ms** | 1.4 ms | p95 < 300 ms |
+
+Client-observed figures include the load generator and nginx on the same machine; results for every scenario are in [`docs/testing.md`](../testing.md).
 
 ### 2.2 Techniques that keep it fast
 

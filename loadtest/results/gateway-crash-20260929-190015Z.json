@@ -1,0 +1,121 @@
+{
+  "checks": [
+    {
+      "Name": "clean",
+      "Target": "all joined and finished, no protocol violations, no failed steps",
+      "Actual": "5000/5000 joined, 5000 finished, 0 violations, 0 step errors",
+      "Pass": true
+    },
+    {
+      "Name": "rejoin",
+      "Target": "slowest reconnect → snapshot \u003c 15s",
+      "Actual": "5.924842013s",
+      "Pass": true
+    },
+    {
+      "Name": "reconciliation",
+      "Target": "0 point or total mismatches, score_reconciliation_mismatches_total 0",
+      "Actual": "0 mismatches, metric 0",
+      "Pass": true
+    }
+  ],
+  "config": {
+    "answerWithin": "2s",
+    "chaos": [
+      "question:2+1s: kill ws-1"
+    ],
+    "correctRatio": 0.7,
+    "joinRampUp": "20s",
+    "noAnswerRatio": 0.02,
+    "participantsPerRoom": 5000,
+    "questionSet": "demo-quick",
+    "reveal": "3s",
+    "roomStagger": "0s",
+    "rooms": 1,
+    "seed": 3,
+    "slowClients": 0,
+    "window": "10s"
+  },
+  "machine": {
+    "cpu": "AMD Ryzen 5 4600H with Radeon Graphics",
+    "cpus": 12,
+    "go": "go1.26.8-X:nodwarf5",
+    "goos": "linux",
+    "kernel": "7.1.10-200.fc44.x86_64",
+    "memory": "16226620 kB"
+  },
+  "overrides": [],
+  "pass": true,
+  "results": {
+    "accepted": 14718,
+    "answersSent": 14718,
+    "closes": {
+      "1006": 2500
+    },
+    "duplicates": 0,
+    "errors": {},
+    "finished": 5000,
+    "joined": 5000,
+    "nfr6": {
+      "count": 14718,
+      "max_ms": 1281.06,
+      "p50_ms": 154.741,
+      "p95_ms": 649.606,
+      "p99_ms": 1188.06
+    },
+    "nfr7": {
+      "count": 14718,
+      "max_ms": 5862.946,
+      "p50_ms": 4.824,
+      "p95_ms": 1721.538,
+      "p99_ms": 4468.258
+    },
+    "nfr8": {
+      "count": 15000,
+      "max_ms": 310.053,
+      "p50_ms": 43.575,
+      "p95_ms": 164.877,
+      "p99_ms": 191.121
+    },
+    "nfr9": {
+      "count": 7500,
+      "max_ms": 1126.239,
+      "p50_ms": 0.754,
+      "p95_ms": 179.118,
+      "p99_ms": 840.797
+    },
+    "participants": 5000,
+    "pointMismatches": null,
+    "quizCodes": [
+      "GFQVQ3"
+    ],
+    "reconciliationMetric": 0,
+    "reconnects": 2500,
+    "rejoin": {
+      "count": 2500,
+      "max_ms": 5924.842,
+      "p50_ms": 2537.24,
+      "p95_ms": 5565.1,
+      "p99_ms": 5872.622
+    },
+    "stale": 180,
+    "stepErrors": null,
+    "totalMismatches": null,
+    "transitionLag": {
+      "count": 2,
+      "max_ms": 63,
+      "p50_ms": 0,
+      "p95_ms": 63,
+      "p99_ms": 63
+    },
+    "violations": null
+  },
+  "scenario": "gateway-crash",
+  "seconds": 60.10723279,
+  "stack": {
+    "baseURL": "http://172.18.0.9:8080",
+    "gateways": 1,
+    "workers": 2
+  },
+  "startedAt": "2026-09-29T19:00:15.916904275Z"
+}

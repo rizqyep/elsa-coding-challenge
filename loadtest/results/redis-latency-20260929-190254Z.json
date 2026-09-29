@@ -1,0 +1,119 @@
+{
+  "checks": [
+    {
+      "Name": "clean",
+      "Target": "all joined and finished, no protocol violations, no failed steps",
+      "Actual": "5000/5000 joined, 5000 finished, 0 violations, 0 step errors",
+      "Pass": true
+    },
+    {
+      "Name": "nfr7",
+      "Target": "p95 answer → result \u003c 100ms, p99 \u003c 250ms",
+      "Actual": "p95 64.467635ms, p99 141.479189ms",
+      "Pass": true
+    },
+    {
+      "Name": "reconciliation",
+      "Target": "0 point or total mismatches, score_reconciliation_mismatches_total 0",
+      "Actual": "0 mismatches, metric 0",
+      "Pass": true
+    }
+  ],
+  "config": {
+    "answerWithin": "2s",
+    "chaos": [
+      "start+0s: redis-latency 20"
+    ],
+    "correctRatio": 0.7,
+    "joinRampUp": "20s",
+    "noAnswerRatio": 0.02,
+    "participantsPerRoom": 5000,
+    "questionSet": "demo-quick",
+    "reveal": "3s",
+    "roomStagger": "0s",
+    "rooms": 1,
+    "seed": 5,
+    "slowClients": 0,
+    "window": "10s"
+  },
+  "machine": {
+    "cpu": "AMD Ryzen 5 4600H with Radeon Graphics",
+    "cpus": 12,
+    "go": "go1.26.8-X:nodwarf5",
+    "goos": "linux",
+    "kernel": "7.1.10-200.fc44.x86_64",
+    "memory": "16226620 kB"
+  },
+  "overrides": [],
+  "pass": true,
+  "results": {
+    "accepted": 14666,
+    "answersSent": 14666,
+    "closes": {},
+    "duplicates": 0,
+    "errors": {},
+    "finished": 5000,
+    "joined": 5000,
+    "nfr6": {
+      "count": 14666,
+      "max_ms": 723.842,
+      "p50_ms": 102.632,
+      "p95_ms": 247.099,
+      "p99_ms": 508.896
+    },
+    "nfr7": {
+      "count": 14666,
+      "max_ms": 531.931,
+      "p50_ms": 26.362,
+      "p95_ms": 64.467,
+      "p99_ms": 141.479
+    },
+    "nfr8": {
+      "count": 15000,
+      "max_ms": 755.69,
+      "p50_ms": 64.893,
+      "p95_ms": 447.497,
+      "p99_ms": 593.947
+    },
+    "nfr9": {
+      "count": 5000,
+      "max_ms": 60.35,
+      "p50_ms": 0.742,
+      "p95_ms": 2.386,
+      "p99_ms": 7.872
+    },
+    "participants": 5000,
+    "pointMismatches": null,
+    "quizCodes": [
+      "XY53QM"
+    ],
+    "reconciliationMetric": 0,
+    "reconnects": 0,
+    "rejoin": {
+      "count": 0,
+      "max_ms": 0,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0
+    },
+    "stale": 0,
+    "stepErrors": null,
+    "totalMismatches": null,
+    "transitionLag": {
+      "count": 2,
+      "max_ms": 73,
+      "p50_ms": 73,
+      "p95_ms": 73,
+      "p99_ms": 73
+    },
+    "violations": null
+  },
+  "scenario": "redis-latency",
+  "seconds": 60.211346711,
+  "stack": {
+    "baseURL": "http://172.18.0.9:8080",
+    "gateways": 2,
+    "workers": 2
+  },
+  "startedAt": "2026-09-29T19:02:54.295300775Z"
+}

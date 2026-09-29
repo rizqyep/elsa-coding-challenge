@@ -154,7 +154,7 @@ flowchart LR
 | [task-26](tasks/p5-stack-and-verification/task-26-test-kit.md) | Test kit | P5 | M | yes | done |
 | [task-27](tasks/p5-stack-and-verification/task-27-end-to-end-and-fault-tests.md) | End-to-end and fault tests | P5 | L | — | done |
 | [task-28](tasks/p5-stack-and-verification/task-28-simulator-and-k6.md) | Simulator and k6 | P5 | M | partial | done |
-| [task-29](tasks/p5-stack-and-verification/task-29-load-runs-and-results.md) | Load runs and results | P5 | M | — | todo |
+| [task-29](tasks/p5-stack-and-verification/task-29-load-runs-and-results.md) | Load runs and results | P5 | M | — | done |
 | [task-30](tasks/p6-submission/task-30-root-readme-and-run-instructions.md) | Root README and run instructions | P6 | S | — | todo |
 | [task-31](tasks/p6-submission/task-31-ai-collaboration-docs.md) | AI collaboration docs | P6 | S | — | todo |
 | [task-32](tasks/p6-submission/task-32-submission-review.md) | Submission review | P6 | S | — | todo |
