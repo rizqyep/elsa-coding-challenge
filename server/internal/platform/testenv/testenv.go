@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,6 +47,8 @@ type Env struct {
 	PostgresDSN         string
 	PostgresViaProxyDSN string
 	Toxiproxy           *toxiclient.Client
+
+	network *testcontainers.DockerNetwork
 }
 
 // Run starts the containers, applies migrations with seed data, runs the package's tests,
@@ -100,7 +103,7 @@ func start(ctx context.Context) (*Env, func(), error) {
 		return fail(fmt.Errorf("toxiproxy: %w", err))
 	}
 
-	e := &Env{}
+	e := &Env{network: nw}
 	redisURL, err := rc.ConnectionString(ctx)
 	if err != nil {
 		return fail(err)
@@ -176,4 +179,37 @@ func (e *Env) Proxy(t *testing.T, name string) *toxiclient.Proxy {
 		t.Fatalf("proxy %s: %v", name, err)
 	}
 	return p
+}
+
+// StartReplica starts a Redis replica of the main instance and returns a client for it.
+// The replica is removed when the test ends.
+func (e *Env) StartReplica(t *testing.T) *redis.Client {
+	t.Helper()
+	ctx := context.Background()
+	c, err := tcredis.Run(ctx, redisImage,
+		network.WithNetwork([]string{"redis-replica"}, e.network),
+		testcontainers.WithCmd("redis-server", "--replicaof", "redis", "6379"))
+	t.Cleanup(func() { _ = testcontainers.TerminateContainer(c) })
+	if err != nil {
+		t.Fatalf("replica: %v", err)
+	}
+	url, err := c.ConnectionString(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := redis.ParseURL(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc := redis.NewClient(opts)
+	t.Cleanup(func() { _ = rc.Close() })
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		if info := rc.Info(ctx, "replication").Val(); strings.Contains(info, "master_link_status:up") {
+			return rc
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("replica never connected to the primary")
+	return nil
 }

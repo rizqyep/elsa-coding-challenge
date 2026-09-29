@@ -63,7 +63,7 @@ test-integration: require-go ## Integration tests against real Redis, PostgreSQL
 	cd server && $(GO) test -race -tags integration -count=1 -timeout 5m ./...
 
 ##@ Contracts and code generation (D13)
-GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas client/src/api/schema.ts client/src/protocol/messages.ts
+GENERATED := server/internal/httpapi/gen/api.gen.go server/internal/protocol/schemas $(wildcard server/internal/*/mocks) client/src/api/schema.ts client/src/protocol/messages.ts
 
 generate: require-go tools/contracts/node_modules ## Regenerate code from docs/api and module interfaces (output is committed)
 	cd server/internal/httpapi && $(GO) tool -modfile=../../tools/go.mod oapi-codegen -config oapi-codegen.yaml ../../../docs/api/openapi.yaml

@@ -137,7 +137,7 @@ flowchart LR
 | [task-09](tasks/p1-domain/task-09-protocol-package.md) | Protocol package | P1 | M | yes | done |
 | [task-10](tasks/p2-redis-scripts/task-10-integration-test-harness.md) | Integration test harness | P2 | S | — | done |
 | [task-11](tasks/p2-redis-scripts/task-11-scripts-create-room-start-join.md) | Scripts: `create_room`, `start`, `join` | P2 | M | yes | done |
-| [task-12](tasks/p2-redis-scripts/task-12-script-answer.md) | Script: `answer` | P2 | L | yes | todo |
+| [task-12](tasks/p2-redis-scripts/task-12-script-answer.md) | Script: `answer` | P2 | L | yes | done |
 | [task-13](tasks/p2-redis-scripts/task-13-scripts-transition-leaderboard.md) | Scripts: `transition`, `leaderboard` | P2 | L | yes | todo |
 | [task-14](tasks/p2-redis-scripts/task-14-flush-scripts-and-postgresql-repositories.md) | Flush scripts and PostgreSQL repositories | P2 | M | yes | todo |
 | [task-15](tasks/p3-services/task-15-auth.md) | Auth | P3 | S | yes | todo |
