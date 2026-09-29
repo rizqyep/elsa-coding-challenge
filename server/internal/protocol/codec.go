@@ -126,6 +126,8 @@ func decodePayload(t Type, data json.RawMessage) (any, error) {
 		return decodeAs[SubmitAnswer](data)
 	case TypePing:
 		return decodeAs[Ping](data)
+	case TypeLeave:
+		return decodeAs[Leave](data)
 	}
 	return nil, errors.New("no payload type for " + string(t))
 }

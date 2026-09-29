@@ -39,6 +39,8 @@ channels:
         $ref: '#/components/messages/submit_answer'
       ping:
         $ref: '#/components/messages/ping'
+      leave:
+        $ref: '#/components/messages/leave'
       snapshot:
         $ref: '#/components/messages/snapshot'
       question:
@@ -111,6 +113,14 @@ operations:
       messages:
       - $ref: '#/channels/quiz/messages/answer_result'
       - $ref: '#/channels/quiz/messages/error'
+  receive_leave:
+    action: receive
+    channel:
+      $ref: '#/channels/quiz'
+    summary: The participant leaves on purpose
+    description: In the lobby the participant is removed, so the host's count drops. After start the score stays and they stop counting as online, so an early close doesn't wait for them. There is no reply message; the server closes the socket with 1000, and the client must not reconnect.
+    messages:
+    - $ref: '#/channels/quiz/messages/leave'
   receive_ping:
     action: receive
     channel:
@@ -216,6 +226,13 @@ components:
         schemaFormat: application/schema+json;version=draft-07
         schema:
           $ref: ./schemas/ws/client/ping.json
+    leave:
+      name: leave
+      title: leave
+      payload:
+        schemaFormat: application/schema+json;version=draft-07
+        schema:
+          $ref: ./schemas/ws/client/leave.json
     snapshot:
       name: snapshot
       title: snapshot

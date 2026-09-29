@@ -84,6 +84,7 @@ func TestDecodeClient_SchemaExamplesDecode(t *testing.T) {
 		protocol.TypeWatch:        protocol.Watch{},
 		protocol.TypeSubmitAnswer: protocol.SubmitAnswer{},
 		protocol.TypePing:         protocol.Ping{},
+		protocol.TypeLeave:        protocol.Leave{},
 	}
 	for rel, f := range loadSchemas(t) {
 		if !strings.HasPrefix(rel, "ws/client/") {

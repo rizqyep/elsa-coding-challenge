@@ -18,6 +18,7 @@ const (
 	TypeWatch        Type = "watch"
 	TypeSubmitAnswer Type = "submit_answer"
 	TypePing         Type = "ping"
+	TypeLeave        Type = "leave"
 )
 
 // Server → client message types.
@@ -35,7 +36,7 @@ const (
 )
 
 // ClientTypes lists the message types a client may send.
-func ClientTypes() []Type { return []Type{TypeJoin, TypeWatch, TypeSubmitAnswer, TypePing} }
+func ClientTypes() []Type { return []Type{TypeJoin, TypeWatch, TypeSubmitAnswer, TypePing, TypeLeave} }
 
 // ServerTypes lists the message types the server sends.
 func ServerTypes() []Type {
@@ -63,6 +64,8 @@ type (
 	Ping struct {
 		ClientTime int64 `json:"clientTime"`
 	}
+	// Leave is sent when the participant leaves on purpose.
+	Leave struct{}
 )
 
 // Shared payload parts.

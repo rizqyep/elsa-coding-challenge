@@ -2,6 +2,7 @@
 
 export interface Protocol {
   client_join?: JoinMessage
+  client_leave?: LeaveMessage
   client_ping?: PingMessage
   client_submit_answer?: SubmitAnswerMessage
   client_watch?: WatchMessage
@@ -39,6 +40,21 @@ export interface JoinMessage {
    * Client-generated; echoed in the reply.
    */
   id: string
+}
+/**
+ * The participant is leaving on purpose. In the lobby they are removed from the quiz; after start their score stays and they stop counting as online. The server replies by closing the socket with 1000.
+ */
+export interface LeaveMessage {
+  /**
+   * Protocol version.
+   */
+  v: 1
+  type: 'leave'
+  data: {}
+  /**
+   * Client-generated; echoed in the reply.
+   */
+  id?: string
 }
 /**
  * Application-level ping, used by the client to estimate its clock offset from the server.

@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LeaveMessage",
+  "description": "The participant is leaving on purpose. In the lobby they are removed from the quiz; after start their score stays and they stop counting as online. The server replies by closing the socket with 1000.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "v",
+    "type",
+    "data"
+  ],
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Protocol version."
+    },
+    "type": {
+      "const": "leave"
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "id": {
+      "$ref": "../../common.json#/definitions/RequestId"
+    }
+  },
+  "examples": [
+    {
+      "v": 1,
+      "type": "leave",
+      "data": {}
+    }
+  ]
+}
