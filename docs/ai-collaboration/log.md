@@ -334,3 +334,20 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - All task-02 tests pass under `-race`.
   - **Mutation checks on the new safety nets:** `check-generated` flagged exactly the two affected files after a spec change and failed, then passed after restore. (The FR-21 contract-test mutation check is in AI-017.)
   - `make check` green: vet, golangci-lint 0 issues, Go tests, oxlint, tsc, Vitest, OpenAPI lint, AsyncAPI validation, generated-code freshness.
+
+### AI-019: Splitting the foundation work into atomic commits
+
+- **Date / phase:** 2026-09-29 · P0 foundation
+- **Task type:** version control
+- **What I asked:** make atomic commits for the foundation work.
+- **What the AI did:**
+  - Six commits, one per task plus one for docs. `Makefile`, `docker-compose.yml`, and `go.mod`/`go.sum` changed across tasks, so their **intermediate versions were reconstructed**, and each commit's `go.mod`/`go.sum` was computed with `go mod tidy` in a throwaway worktree. That way every commit contains only the dependencies its own code uses.
+  - No AI trailers in any commit, per my standing rule.
+- **A false alarm, handled carefully:**
+  - A quick one-liner counting requirements in each commit's `go.mod` reported 0 for the migrations commit, which would have meant a commit that doesn't build.
+  - Rather than rewrite history on that signal, the AI inspected the commit directly. The `go.mod` was correct; the count was wrong, most likely because `grep` on this machine resolves to ugrep and treated the pattern differently.
+  - It then replaced the one-liner with the check that actually matters (next bullet).
+- **Verification:**
+  - Each code commit was checked out in its own worktree: build, vet, golangci-lint, `go test -race`, and `go mod tidy -diff` all pass for every commit.
+  - The final working tree is byte-identical to the pre-commit state (`Makefile`, Compose file, `go.mod`, `go.sum`).
+  - `make check` passes on a fresh checkout of `HEAD`, with dependencies installed from scratch. This closes task-01's clean-clone criterion.
