@@ -142,7 +142,7 @@ flowchart LR
 | [task-14](tasks/p2-redis-scripts/task-14-flush-scripts-and-postgresql-repositories.md) | Flush scripts and PostgreSQL repositories | P2 | M | yes | done |
 | [task-15](tasks/p3-services/task-15-auth.md) | Auth | P3 | S | yes | done |
 | [task-16](tasks/p3-services/task-16-rest-api-service.md) | REST API service | P3 | M | yes | done |
-| [task-17](tasks/p3-services/task-17-question-cache.md) | Question cache | P3 | M | yes | todo |
+| [task-17](tasks/p3-services/task-17-question-cache.md) | Question cache | P3 | M | yes | done |
 | [task-18](tasks/p3-services/task-18-gateway-connections.md) | Gateway: connections | P3 | L | yes | todo |
 | [task-19](tasks/p3-services/task-19-gateway-registry-and-room-events.md) | Gateway: registry and room events | P3 | L | yes | todo |
 | [task-20](tasks/p3-services/task-20-gateway-message-handlers-and-presence.md) | Gateway: message handlers and presence | P3 | M | yes | todo |

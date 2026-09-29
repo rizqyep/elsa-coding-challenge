@@ -31,7 +31,7 @@ Every requirement in the brief, mapped to the place that covers it. Before submi
 | B5 | Architecture diagram and component descriptions (Part 1) | [`architecture.md`](../system-design/architecture.md) |
 | B6 | Data flow, join → leaderboard (Part 1) | [`data-flow.md`](../system-design/data-flow.md) |
 | B7 | Technologies with justification (Part 1) | [`tech-choices.md`](../system-design/tech-choices.md), decisions in `context.md` |
-| B8 | AI Collaboration in Design (Submission 1) | [`docs/ai-collaboration/`](../ai-collaboration/index.md) (AI-001 to AI-027 so far) |
+| B8 | AI Collaboration in Design (Submission 1) | [`docs/ai-collaboration/`](../ai-collaboration/index.md) (AI-001 to AI-028 so far) |
 | B9 | AI-assisted code marked, with verification (Part 2.3) | `docs/ai-collaboration/` + code pointers (D7) |
 | B10 | Scalability and trade-offs (Part 2.4) | NFR-1 to NFR-5e, NFR-24 to NFR-26, D10, D11; [`non-functional.md`](../system-design/non-functional.md) §1, §7 |
 | B11 | Performance under load (Part 2.4) | NFR-6 to NFR-11; `non-functional.md` §2; load test results |

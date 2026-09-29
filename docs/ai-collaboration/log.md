@@ -505,3 +505,29 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - The integration package was run 4 times with no flakes, and a smoke run of the real binary succeeded.
   - Each commit builds and passes unit tests on its own.
   - `make check` and `make test-integration` are green.
+
+### AI-028: Question cache (task-17)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:** I asked to continue with task-17 after reviewing tasks 15–16.
+- **What the AI produced:**
+  - the question-set validator and answer-path lookups;
+  - the PostgreSQL set loader;
+  - the gateway question cache: single-flight loading, transient-only retries within the budget, reference counting, LRU eviction of unreferenced sets.
+- **Design points the AI raised:**
+  - **A load must not be tied to the first caller's context.** Otherwise one cancelled join fails everyone waiting on the same load.
+  - **The load caches the set before returning.** Otherwise a join arriving just after the flight ends starts a second load.
+  - **A question with no options must reach validation**, so the loader left-joins options instead of silently dropping such a question.
+- **Catches:**
+  - **Mutants caught only as hangs.** In the first mutation run, 3 mutants (no single-flight, retrying every error, wrong eviction) didn't fail; they hung until Go's 10-minute timeout. A gomock over-call inside the single-flight goroutine exits that goroutine, so its callers never return. The AI changed every cache-test `Acquire` to a 5 s deadline and made the single-flight test count loads itself; the same mutants now fail in about 5 s. This is the second time this class of weakness has appeared (see AI-026), so polling or waiting tests now get a deadline by default.
+  - **Tooling mistakes during the mutation run**, both corrected:
+    - A first mutation run silently tested nothing, because zsh doesn't word-split `-run Pattern` held in a variable.
+    - An over-broad `pkill -f` killed its own shell, and a later kill loop cut one mutant's test short. That batch was discarded and rerun cleanly, and every file was confirmed restored before anything else changed.
+  - **My own test bug:** gomock kept answering the "recovered" call from the unbounded outage expectation. The outage is now a switch.
+  - **Test isolation:** the malformed-set test now deletes its rows. Question sets survive `Reset`, and another test expects exactly the seeded three.
+- **Verification:**
+  - Unit tests with a gomock loader and a fake clock.
+  - Integration tests against real PostgreSQL.
+  - 7 mutations caught with a 60 s backstop timeout.
+  - Repeated and shuffled runs.
+  - `make check` and the integration suite are green.

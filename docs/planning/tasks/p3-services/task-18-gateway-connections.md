@@ -29,6 +29,7 @@ Written before the implementation and reviewed by me before any code is written 
 
 ## Done when
 
+- [ ] question cache (task-17) wired in: `Acquire` on a room's first local connection, `Release` when its last one leaves
 - [ ] upgrader with pooled write buffers, read/write loops, send queue, rate limiter
 - [ ] tests pass under `-race`
 - [ ] `make check` green
