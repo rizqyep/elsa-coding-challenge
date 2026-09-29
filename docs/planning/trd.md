@@ -375,6 +375,7 @@ Not part of the client contract. They're decoded only by gateways, which ignore 
 |---|---|---|
 | `create_room` | API | Create the room in `lobby` and schedule its expiry |
 | `join` | gateway | Add or restore a participant; return the snapshot |
+| `leave` | gateway | A participant leaves on purpose: removed in the lobby, only marked offline after start (FR-14) |
 | `start` | API | Host requests the start (FR-3) |
 | `answer` | gateway | Record one answer atomically (FR-16 to FR-22, FR-5) |
 | `transition` | worker | Apply one due transition (§3.3) and publish the state event |
@@ -409,6 +410,12 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
 
 - **KEYS:** `room`, `online`. **ARGV:** participant IDs (at most 500 per call).
 - **Steps:** room gone (`PTTL ≤ 0`) → return 0, so a released room's online set is never recreated without an expiry. Otherwise `ZADD online <Redis TIME> id…` and `PEXPIRE online <room PTTL>`.
+
+#### `leave`
+
+- **KEYS:** `room`, `roster`, `lb`, `online`, `sched:lbdirty`. **ARGV:** code, participant_id.
+- **Steps:** room gone → `gone` (nothing is recreated). `ZREM online id` in every state, so an early close stops waiting for them. Not `lobby` → `offline`: the score and roster entry stay (FR-14 counts them; the final results include them). `lobby` → `HDEL roster id`, `ZREM lb id`, `SADD sched:lbdirty code` so the next leaderboard tick sends the lower count → `removed`.
+- A disconnect is still not a leave (§4.6): only the explicit `leave` message runs this script. A crashed tab or dropped network sends nothing, so that player stays in the lobby list; pruning offline players at start was considered and left out, since it would change the start rules that Go and Lua share.
 
 #### `start`
 
@@ -645,6 +652,7 @@ The contracts are real files, written before the code (D13). This section explai
 | `watch` {quizCode} (host) | `snapshot` or `error` |
 | `submit_answer` {questionId, optionId} | `answer_result` (`accepted`/`duplicate`) or `error` |
 | `ping` {clientTime} | `pong` {clientTime, serverTime} |
+| `leave` {} | none; the server closes with 1000 and the client doesn't reconnect |
 
 | Server → client (pushed) | When |
 |---|---|
@@ -717,6 +725,7 @@ The send queue is a buffered channel of `WS_SEND_QUEUE_SIZE` items. An item is e
 | Both | A participant token can't `watch`; a host token can't `join` (the host doesn't play). One quiz per connection: a second `join`/`watch` → `already_joined`. A room this gateway already has skips the room lookup, so a join burst reads the room once per gateway. A failed join leaves the room, so the client can retry on the same connection. A finished quiz isn't joined: the reply is a read-only finished snapshot, from Redis while the room exists, then from the archived results (FR-13) |
 | `submit_answer` | Must be a joined participant → cached question: does `optionId` belong to `questionId`? (`invalid_option`) → `correct` from the cached answer key → `answer` script (+ `WAIT` in the same pipeline when enabled) → `answer_result` or `error`. A question not in the cached set → `wrong_question` without calling Redis |
 | `ping` | Reply `pong` with `TIME`-aligned server time (the gateway tracks its offset from Redis `TIME`, refreshed every 30 s) |
+| `leave` | Participant only: `leave` script (§4.4), then out of the registry, then close 1000. The client sends it from its Leave button and on `pagehide`. A reload also fires `pagehide`, so a lobby player drops off the host's list until they join again; they keep the same identity, and in the lobby there is no score to lose. After start, a reload only marks them offline until they rejoin. A failed script is logged and the socket still closes |
 
 **Rate limiting:** a token bucket per connection (`WS_RATE_PER_SEC`, `WS_RATE_BURST`). Over the limit → `error rate_limited` with `retryAfterMs`. More than 100 violations in 10 s → close with 4002.
 
