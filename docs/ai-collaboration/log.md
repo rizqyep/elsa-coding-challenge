@@ -593,3 +593,4 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - Integration tests on real Redis with Toxiproxy: latency, outage, and a half-open connection.
   - An end-to-end test with real scripts, the question cache over PostgreSQL, and real WebSocket clients, where every frame is validated against its schema.
   - 21 mutations caught, 3 clean repeated runs, all 16 integration packages, and `make check` green.
+  - **One unexplained failure.** In the per-commit check, commit `12b52d9` failed its unit tests once. It didn't reproduce in 4 reruns of that commit, 15 runs of the realtime package under CPU load, or 5 full race-detector runs of every package. The check script kept only a count of `FAIL` lines, so the failing test is unknown. From now on, per-commit checks keep their full output so a one-off failure can be identified.
