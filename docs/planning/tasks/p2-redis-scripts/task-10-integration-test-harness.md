@@ -11,6 +11,7 @@
 
 - [ ] testcontainers helpers: Redis 7.4, PostgreSQL 16 with migrations applied, Toxiproxy with proxies for both; shared per package via `TestMain`
 - [ ] Test: every embedded script loads; after `SCRIPT FLUSH`, a call reloads transparently
+- [ ] Port task-04's seed-validation checks into a Go integration test against the migrated test database
 - [ ] `make test-integration` (build tag `integration`) runs locally and is documented for CI
 
 ## Done when

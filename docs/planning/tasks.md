@@ -126,11 +126,11 @@ flowchart LR
 
 | Task | Title | Phase | Size | TDD | Status |
 |---|---|---|---|---|---|
-| [task-01](tasks/p0-foundation/task-01-repository-scaffold.md) | Repository scaffold | P0 | S | — | todo |
-| [task-02](tasks/p0-foundation/task-02-platform-packages.md) | Platform packages | P0 | M | partial | todo |
-| [task-03](tasks/p0-foundation/task-03-data-stores-in-docker-compose.md) | Data stores in Docker Compose | P0 | S | — | todo |
-| [task-04](tasks/p0-foundation/task-04-migrations-and-seed-data.md) | Migrations and seed data | P0 | S | test | todo |
-| [task-05](tasks/p0-foundation/task-05-code-generation-and-contract-checks.md) | Code generation and contract checks | P0 | M | test | todo |
+| [task-01](tasks/p0-foundation/task-01-repository-scaffold.md) | Repository scaffold | P0 | S | — | done |
+| [task-02](tasks/p0-foundation/task-02-platform-packages.md) | Platform packages | P0 | M | partial | done |
+| [task-03](tasks/p0-foundation/task-03-data-stores-in-docker-compose.md) | Data stores in Docker Compose | P0 | S | — | done |
+| [task-04](tasks/p0-foundation/task-04-migrations-and-seed-data.md) | Migrations and seed data | P0 | S | test | done |
+| [task-05](tasks/p0-foundation/task-05-code-generation-and-contract-checks.md) | Code generation and contract checks | P0 | M | test | done |
 | [task-06](tasks/p1-domain/task-06-identifiers-quiz-codes-validation.md) | Identifiers, quiz codes, validation | P1 | S | yes | todo |
 | [task-07](tasks/p1-domain/task-07-scoring-and-ranks.md) | Scoring and ranks | P1 | S | yes | todo |
 | [task-08](tasks/p1-domain/task-08-quiz-state-machine.md) | Quiz state machine | P1 | M | yes | todo |

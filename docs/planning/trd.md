@@ -39,6 +39,8 @@ rizqyep-elsa-assignment/
 │   ├── planning/  system-design/  ai-collaboration/
 ├── server/                    # Go module (backend)
 ├── client/                    # React + TypeScript (Vite)
+├── tools/
+│   └── contracts/             # TypeScript generators + OpenAPI/AsyncAPI validation (own package.json)
 └── loadtest/
     └── k6/                    # k6 scenarios
 ```
@@ -72,7 +74,7 @@ server/
 │       ├── metrics/           # Prometheus registry and metric definitions
 │       ├── tracing/           # OpenTelemetry setup
 │       ├── redisx/            # client, script loader, key names
-│       ├── pgx/               # pool, migrations runner
+│       ├── postgres/          # pool and helpers (named to avoid clashing with the pgx import)
 │       └── retry/             # capped exponential backoff with jitter
 ├── migrations/                # goose SQL migrations and seed question sets
 └── testkit/                   # protocol client, scenario builders, assertions (D14)
@@ -109,8 +111,8 @@ internal/scoring/
 | Source | Generator | Output | Command |
 |---|---|---|---|
 | `docs/api/openapi.yaml` | `oapi-codegen` | `server/internal/httpapi/gen/` | `make generate` |
-| `docs/api/openapi.yaml` | `openapi-typescript` | `client/src/api/schema.ts` | `make generate` |
-| `docs/api/schemas/*.json` | `json-schema-to-typescript` | `client/src/protocol/` | `make generate` |
+| `docs/api/openapi.yaml` | `openapi-typescript` (in `tools/contracts/`) | `client/src/api/schema.ts` | `make generate` |
+| `docs/api/schemas/*.json` | `json-schema-to-typescript` (in `tools/contracts/`) | `client/src/protocol/messages.ts` (one file) | `make generate` |
 | Module interfaces | `mockgen` (`go.uber.org/mock`) | `internal/*/mocks/` | `go generate ./...` |
 
 Generated files are committed so the repo builds without the generators installed. CI (and `make check`) regenerates and fails on any diff.
@@ -125,13 +127,13 @@ All configuration comes from environment variables, parsed and validated at star
 
 | Variable | Default | Notes |
 |---|---|---|
-| `APP_ENV` | `local` | `local` or `production`. `production` forbids dev tokens |
+| `APP_ENV` | `local` | `local` or `production`. Seed data is applied only in `local` |
 | `HTTP_ADDR` | `:8080` | Serves the service's endpoints plus `/healthz`, `/readyz`, `/metrics` |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 | `REDIS_ADDR` | `redis:6379` | |
 | `REDIS_PASSWORD` | — | |
 | `POSTGRES_DSN` | — | Required by api, ws, worker |
-| `AUTH_SIGNING_KEY` | — | Required. HS256 secret for the mocked identity provider |
+| `AUTH_SIGNING_KEY` | — | Required, at least 32 bytes. HS256 secret for the mocked identity provider |
 | `SHUTDOWN_TIMEOUT` | `30s` | Drain budget (NFR-16) |
 | `DB_RETRY_BASE` / `DB_RETRY_MAX` / `DB_RETRY_BUDGET` | `100ms` / `5s` / `10s` | Question-set load retries (non-functional §3.1) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Tracing off when unset |
@@ -140,7 +142,7 @@ All configuration comes from environment variables, parsed and validated at star
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DEV_TOKENS_ENABLED` | `true` | Enables `POST /api/dev/tokens`. Must be `false` in production |
+| `DEV_TOKENS_ENABLED` | `true` | Enables `POST /api/v1/dev/tokens` |
 | `AUTH_TOKEN_TTL` | `15m` | Only needs to be valid when a socket connects (D15) |
 | `QUIZ_QUESTION_WINDOW_DEFAULT` | `15s` | Per-quiz override allowed within 5–120 s (FR-7) |
 | `QUIZ_REVEAL_DEFAULT` | `5s` | Per-quiz override allowed within 2–30 s |
@@ -172,7 +174,6 @@ All configuration comes from environment variables, parsed and validated at star
 | `SCHED_FLUSH_POLL` | `1s` | |
 | `SCHED_CLAIM_BATCH` | `100` | Max items claimed per poll |
 | `FLUSH_VISIBILITY_TIMEOUT` | `30s` | A claimed job becomes due again after this |
-| `LEADERBOARD_TOP_N` | `10` | FR-26 |
 | `QUIZ_DATA_TTL` | `24h` | Safety-net TTL on room keys (NFR-18) |
 
 ---

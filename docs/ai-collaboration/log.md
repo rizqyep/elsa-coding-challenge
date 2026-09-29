@@ -282,3 +282,55 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - the dependency graph in `tasks.md` matches the files' "Depends on" links exactly, and is acyclic;
   - every must-have FR and every TRD section 1–11 is covered;
   - no broken links; the graph renders.
+
+---
+
+## Implementation phase
+
+### AI-017: Foundation (task-01, task-03, task-04) and first tests for review (task-02, task-05)
+
+- **Date / phase:** 2026-09-29 · P0 foundation
+- **Task type:** scaffolding, infrastructure, test authoring
+- **What I asked:** "Let's do foundational tasks and scaffold!" Decisions I made along the way:
+  - install Go with `dnf` (Go 1.26) rather than a user-level install or a Docker-only toolchain;
+  - approve the seed vocabulary after reviewing it.
+- **What the AI produced:**
+  - **task-01:** Go module and package tree, React client scaffold, Makefile, lint config, `.env.example`, tools module.
+  - **task-03:** Compose data stores.
+  - **task-04:** migrations, 23 seed questions, `cmd/migrate`, shared Dockerfile.
+  - **Tests only, no implementation yet:** task-02 (config, backoff, Redis keys) and task-05 (contract tests).
+- **Catches and adjustments:**
+  - Port 6379 was already in use on my machine, so host ports default to 16379/15432 in `.env`.
+  - Fedora's Go sets `GOTOOLCHAIN=local`, so every pinned tool was checked to build with Go 1.26 before relying on it.
+  - The Vite template now ships oxlint instead of ESLint; kept and recorded.
+  - golangci-lint flagged an unchecked `db.Close()` error in `cmd/migrate`; handled rather than suppressed.
+  - `docker compose up --wait` fails when a one-shot container exits, even successfully. Migrate moved to a `tools` profile and runs explicitly after the stores are healthy.
+  - goose's Provider API (`WithTableName`) and the JSON Schema library's loader were **read from their source** before use, not assumed.
+  - **An ambiguous verification was redone.** The first migration up/down check printed "tables left: 0" without goose's own output, which would also be true if nothing had run. It was redone with every step visible. A second attempt then failed on zsh quoting, and its empty numbers were not taken as a result.
+- **Verification:**
+  - `make check` green: vet, golangci-lint 0 issues, `go test -race`, oxlint, tsc, Vitest.
+  - Stores healthy; persistence across `down`/`up`; wiped by `reset`.
+  - Migrations idempotent; Up/Down proven on a scratch database (6 tables → 23 questions → 0 → 0 → 6).
+  - Contract tests pass. **Mutation check:** temporarily allowing extra fields on `PublicQuestion` made the FR-21 test fail, and restoring it made it pass, so the test can actually detect a leak.
+  - task-02 tests compile-fail against the not-yet-written API: the expected red state, **pending my review**.
+
+### AI-018: Platform packages and code generation (task-02, task-05)
+
+- **Date / phase:** 2026-09-29 · P0 foundation
+- **Task type:** TDD implementation, code generation, tooling
+- **My test review (before any implementation):** I approved the tests with changes, to avoid over-engineering:
+  - keep the signing-key length check;
+  - **drop the production-only dev-token rule** ("this is just an assignment, so no real production");
+  - **make the leaderboard a fixed top 10** (the setting was removed everywhere);
+  - keep the timeout ordering rules.
+- **What the AI produced:** `platform/retry`, `config`, `redisx` (keys, client, script loader), `logging`, `postgres`, `metrics`; oapi-codegen setup; a `tools/contracts/` package with the TypeScript generators and spec validation; Makefile targets `generate`, `check-generated`, `lint-contracts`.
+- **Catches:**
+  - **The AI weakened its own test and then fixed it.** The key-name test was a map keyed by the actual names, so two functions returning the same name would overwrite each other's case unnoticed. Found on re-read, changed to ordered pairs.
+  - **A dependency conflict was not forced.** `openapi-typescript` requires TypeScript 5, the client uses 6. Rather than `--legacy-peer-deps` (risky: the generator drives the TypeScript compiler API), the generators moved to their own package.
+  - **Generated type names collided:** `interface Error` shadowed the built-in, and `Leaderboard1` / `QuizState1` appeared. Fixed at the source by titling message schemas `…Message`.
+  - Lint found 8 issues after implementation. All were fixed, not suppressed, apart from one scoped exclusion (gosec in tests reading fixtures).
+  - The AsyncAPI CLI's analytics (noted in AI-013) were avoided by validating with the parser library directly.
+- **Verification:**
+  - All task-02 tests pass under `-race`.
+  - **Mutation checks on the new safety nets:** `check-generated` flagged exactly the two affected files after a spec change and failed, then passed after restore. (The FR-21 contract-test mutation check is in AI-017.)
+  - `make check` green: vet, golangci-lint 0 issues, Go tests, oxlint, tsc, Vitest, OpenAPI lint, AsyncAPI validation, generated-code freshness.
