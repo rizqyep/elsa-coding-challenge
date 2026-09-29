@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/Shopify/toxiproxy/v2 v2.12.0
 	github.com/getkin/kin-openapi v0.149.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/oapi-codegen/runtime v1.7.0
 	github.com/pressly/goose/v3 v3.28.0
