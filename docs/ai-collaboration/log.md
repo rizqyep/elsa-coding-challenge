@@ -426,3 +426,18 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - 10 integration tests on real Redis (plus a replica container) and 5 gomock service tests. The gomock tests assert **exactly one repository call** on failure: no retry, per TRD §9.3.
   - **Mutation checks, all caught:** Lua rounding (vector parity fails); duplicate check removed (**100 accepted answers, score 19,300 instead of 193**, the exact double-scoring bug the design prevents); early close moving the deadline; `WAIT` dropped.
   - `make check` and `make test-integration` green.
+
+### AI-024: Transition and leaderboard scripts (task-13), and a design claim corrected by mutation testing
+
+- **Date / phase:** 2026-09-29 · P2 Redis scripts
+- **Task type:** TDD implementation
+- **What the AI produced:** `next.lua` (a direct port of `quiz.Next`), `transition.lua`, `top.lua`, `leaderboard.lua`, and the worker-facing repository methods. Tests cover the shared vectors in Lua, every lifecycle step with its side effects, 20 competing workers, and answers racing the close.
+- **Catches:**
+  - The AI's first draft left out the answers-racing-the-close test the task required. Found on re-read and added.
+  - Lint caught a `!=` comparison with an error value in a new test.
+- **Mutation testing overturned a documented design claim:**
+  - Removing the transition script's expected-version check was **not caught**.
+  - The AI didn't weaken or rig the test to make the mutation fail. It analysed why: exactly-once comes from the script deciding and applying atomically (after any transition the next is in the future), not from the version check, which is only an extra guard.
+  - The TRD claimed otherwise and was corrected. Whether to keep the check was raised as a design question for me.
+- **Mutation coverage mapped instead of assumed:** removing the answer deadline check passed the race test, because that gap is ~1 ms wide, but failed task-12's dedicated late-answer test. The AI confirmed the property is covered and recorded which test covers it.
+- **Verification:** Lua `next_state` passes all 14 shared vectors; exactly one of 20 workers applies a transition; the race test's invariants (accepted before close, stored = accepted, leaderboard = accepted points) hold. `make check` and `make test-integration` green.
