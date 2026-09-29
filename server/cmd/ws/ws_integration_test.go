@@ -335,6 +335,39 @@ func runJobs(t *testing.T) {
 	t.Fatal("room not released")
 }
 
+// ws_connections tracks this gateway's open sockets, so a scaled stack can show how nginx spreads them (task-25).
+func TestConnectionsGauge(t *testing.T) {
+	setup(t)
+	gw := startGateway(t)
+	a := dial(t, gw, "u_1", auth.RoleParticipant)
+	dial(t, gw, "u_2", auth.RoleParticipant)
+	waitGauge(t, gw.reg, 2)
+	_ = a.ws.Close()
+	waitGauge(t, gw.reg, 1)
+}
+
+// waitGauge waits up to 2 s for ws_connections to reach want.
+func waitGauge(t *testing.T, reg *prometheus.Registry, want float64) {
+	t.Helper()
+	var got float64
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		families, err := reg.Gather()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = -1
+		for _, f := range families {
+			if f.GetName() == "ws_connections" {
+				got = f.GetMetric()[0].GetGauge().GetValue()
+			}
+		}
+		if got == want {
+			return
+		}
+	}
+	t.Fatalf("ws_connections = %v, want %v", got, want)
+}
+
 func redisZ(score float64, member string) redis.Z { return redis.Z{Score: score, Member: member} }
 
 // errorsTotal reads errors_total{service="ws", code} from the gateway's registry.

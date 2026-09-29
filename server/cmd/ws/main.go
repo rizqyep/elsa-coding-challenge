@@ -20,6 +20,7 @@ import (
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/auth"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/config"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/health"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/logging"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/metrics"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/postgres"
@@ -41,6 +42,7 @@ const (
 )
 
 func main() {
+	health.Main(os.Args)
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -133,6 +135,8 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	opts := realtime.OptionsFrom(cfg)
 	opts.OnError = func(code protocol.ErrorCode) { errorsTotal.WithLabelValues("ws", string(code)).Inc() }
 	ws := realtime.New(opts, &auth.Tokens{Key: cfg.AuthSigningKey}, handler, log)
+	reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "ws_connections", Help: "Open WebSocket connections on this gateway."},
+		func() float64 { return float64(ws.Active()) }))
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /ws", ws)

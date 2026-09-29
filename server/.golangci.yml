@@ -11,6 +11,10 @@ linters:
       # Tests read fixtures and contract files from paths they build themselves.
       - path: _test\.go
         linters: [gosec]
+      # The healthcheck probes this process's own HTTP_ADDR; no request data reaches the URL.
+      - path: internal/platform/health/probe\.go
+        linters: [gosec]
+        text: G704
   enable:
     - bodyclose
     - errorlint

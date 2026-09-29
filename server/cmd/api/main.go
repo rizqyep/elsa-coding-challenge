@@ -20,6 +20,7 @@ import (
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/httpapi"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/config"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/health"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/logging"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/metrics"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/postgres"
@@ -30,6 +31,7 @@ import (
 const requestTimeout = 5 * time.Second
 
 func main() {
+	health.Main(os.Args)
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
