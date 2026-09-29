@@ -1,0 +1,14 @@
+# observability profile (task-23 scaffold): scrapes every instance, so scaled replicas appear on their own.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: quiz
+    dns_sd_configs:
+      - names: [api, ws, worker]
+        type: A
+        port: 8080
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: service

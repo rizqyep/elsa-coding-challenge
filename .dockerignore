@@ -1,0 +1,9 @@
+# Only the nginx image builds from the repo root; the Go image uses server/ as its context.
+.git
+**/node_modules
+client/dist
+server
+docs
+tools
+loadtest
+.env

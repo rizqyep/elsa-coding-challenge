@@ -1,8 +1,85 @@
 # Local stack. Start with `make up`; see docs/planning/trd.md §11.
-# Data stores and the one-shot migrate service; the Go services, nginx, and profiles arrive in task-25.
+# Default: nginx, api, 2× ws, 2× worker, redis, postgres, migrate. Profiles: observability, replica, chaos.
 name: quiz
 
+x-go-service: &go-service
+  build:
+    context: ./server
+  env_file: .env
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "/app", "healthcheck"]
+    interval: 2s
+    timeout: 3s
+    retries: 15
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    toxiproxy:
+      condition: service_started
+      required: false
+
+# Set by the Makefile per profile: chaos routes through Toxiproxy, replica turns on WAIT.
+x-go-env: &go-env
+  HTTP_ADDR: ":8080"
+  REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+  POSTGRES_DSN: ${POSTGRES_DSN}
+  REDIS_WAIT_REPLICAS: ${REDIS_WAIT_REPLICAS:-0}
+
 services:
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/nginx/Dockerfile
+    ports:
+      - "127.0.0.1:${HTTP_HOST_PORT:-8080}:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/nginx-health"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    depends_on:
+      api:
+        condition: service_healthy
+      ws:
+        condition: service_healthy
+
+  api:
+    <<: *go-service
+    build: { context: ./server, args: { CMD: api } }
+    environment: *go-env
+
+  ws:
+    <<: *go-service
+    build: { context: ./server, args: { CMD: ws } }
+    environment: *go-env
+    deploy:
+      replicas: 2
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+
+  worker:
+    <<: *go-service
+    build: { context: ./server, args: { CMD: worker } }
+    environment: *go-env
+    deploy:
+      replicas: 2
+
+  migrate:
+    build: { context: ./server, args: { CMD: migrate } }
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      POSTGRES_DSN: postgres://${POSTGRES_USER:-quiz}:${POSTGRES_PASSWORD:-quiz-local-only}@postgres:5432/${POSTGRES_DB:-quiz}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
@@ -32,21 +109,43 @@ services:
       timeout: 2s
       retries: 15
 
-  migrate:
-    # One-shot: run by `make up` (or `make migrate`) after the data stores are healthy.
-    # Kept out of plain `docker compose up`, whose --wait treats an exited container as a failure.
-    profiles: ["tools"]
-    build:
-      context: ./server
-      args:
-        CMD: migrate
-    environment:
-      APP_ENV: ${APP_ENV:-local}
-      POSTGRES_DSN: ${POSTGRES_DSN}
+  # ---- profile: replica (make up PROFILES=replica) ------------------------
+  redis-replica:
+    profiles: ["replica"]
+    image: redis:7.4-alpine
+    command: ["redis-server", "--replicaof", "redis", "6379"]
     depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli info replication | grep -q master_link_status:up"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  # ---- profile: chaos (make up PROFILES=chaos) ----------------------------
+  toxiproxy:
+    profiles: ["chaos"]
+    image: ghcr.io/shopify/toxiproxy:2.12.0
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./deploy/toxiproxy/toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "127.0.0.1:8474:8474"
+    depends_on:
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
-    restart: "no"
+
+  # ---- profile: observability (make up PROFILES=observability) ------------
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
 
 volumes:
   redis-data:
