@@ -50,6 +50,7 @@ A decision is `decided` only when its rationale is written down, either here or 
 | D14 | Test strategy | **TDD by default for critical services and core business logic.** Four levels: pure domain unit tests; service unit tests with **gomock** (incl. injected failures); integration tests on real Redis/PostgreSQL (testcontainers, with fault injection); end-to-end and load ([notes](#d14-test-strategy)) | decided |
 | D15 | WebSocket authentication | **Signed token in the query string** (`/ws?token=…`) over TLS. Tokens are short-lived; query strings are excluded from load balancer and gateway logs | decided |
 | D16 | Quiz code | **System-generated, 6 characters, random alphanumeric** from an alphabet without look-alikes. Collisions retried at creation; unique for good, since finished quizzes stay viewable (FR-13) | decided |
+| D17 | Build focus | **The real-time path gets the full treatment** (gateway, worker, client, simulation and load runs that show the architecture is ready). **Supporting concerns are minimal scaffolds that keep the scalable shape:** observability is endpoints plus a few core metrics, with no tracing, dashboards or alert files; shutdown keeps only the drain that rolling deploys need. The full observability design stays documented in non-functional §4 as the target | decided |
 
 ### D2: quiz mode
 

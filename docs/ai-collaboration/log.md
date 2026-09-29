@@ -594,3 +594,34 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - An end-to-end test with real scripts, the question cache over PostgreSQL, and real WebSocket clients, where every frame is validated against its schema.
   - 21 mutations caught, 3 clean repeated runs, all 16 integration packages, and `make check` green.
   - **One unexplained failure.** In the per-commit check, commit `12b52d9` failed its unit tests once. It didn't reproduce in 4 reruns of that commit, 15 runs of the realtime package under CPU load, or 5 full race-detector runs of every package. The check script kept only a count of `FAIL` lines, so the failing test is unknown. From now on, per-commit checks keep their full output so a one-off failure can be identified.
+
+### AI-031: Gateway message handlers, presence, and the build focus (task-20, D17)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:**
+  - I asked for task-20 after reviewing task-19.
+  - Mid-task I set the build focus (D17): the real-time path gets the full treatment, including simulation and load runs that show the architecture is ready. Supporting concerns stay minimal scaffolds that keep the scalable shape, and observability shouldn't go deep.
+- **What the AI produced:**
+  - the message handler: join, watch, submit and ping, with one error mapping for TRD §9.6;
+  - the `presence` script and loop, and a gateway clock aligned to Redis `TIME`;
+  - the connection kick published inside `join`;
+  - the archived final read for finished quizzes;
+  - the `cmd/ws` wiring with health, readiness and `errors_total`;
+  - the D17 rewrite of task-22 and task-23.
+- **Burst decisions carried from my task-18 concern:** a join into a room the gateway already has skips the room lookup, and the own-answer read runs only mid-question, so a lobby join burst costs one script per participant.
+- **Found by checking every frame against the contract:** `pong` echoed a request `id` its schema didn't allow, and the finished-quiz snapshot had an empty display name. The schema was fixed (the change is additive); the name comes from the join message.
+- **Found by noticing test timings:** the new gateway tests took 15 s and 30 s. That was the subscriber from task-19 waiting out its 15 s health interval on shutdown, because a blocked read ignores cancellation. The task-19 tests used a 200 ms interval and hid it. Fixed by closing the connection on cancel, with a test that fails without the fix.
+- **What the AI got wrong:**
+  - a test assumed the gateway accepts lowercase codes, but the contract rejects them (the client uppercases);
+  - a transition helper didn't force `close_at`;
+  - a clock source passed a single `TIME` reading instead of a function;
+  - `prometheus/testutil` would have added a dependency for one assertion;
+  - a backup file went to `/tmp` instead of the scratchpad (deleted);
+  - it first checked off "two browser tabs" when no client exists yet, then reworded the step.
+- **Verification:**
+  - handler unit tests on fakes, and integration tests for the scripts and `Final`;
+  - the task-19 end-to-end test switched to the real handler;
+  - a new `cmd/ws` test through the real wiring, including a kick across two gateways;
+  - 29 deliberate breaks, all caught;
+  - `make check` and all 17 integration packages green, with full logs saved;
+  - a smoke run of the real `api` and `ws` binaries against Compose with Bun WebSocket clients.
