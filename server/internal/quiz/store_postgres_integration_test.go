@@ -3,12 +3,16 @@
 package quiz_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/retry"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/quiz"
 )
 
@@ -178,5 +182,81 @@ func TestStore_Quiz(t *testing.T) {
 	}
 	if _, err := s.Quiz(ctx, "ZZZZZZ"); !errors.Is(err, quiz.ErrUnknownQuiz) {
 		t.Errorf("unknown code: %v, want ErrUnknownQuiz", err)
+	}
+}
+
+func TestStore_QuestionSet(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	got, err := s.QuestionSet(ctx, "demo-quick")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != "demo-quick" || got.Title != "Quick demo" || len(got.Questions) != 3 {
+		t.Fatalf("set = %+v", got)
+	}
+	q := got.Questions[0]
+	want := []quiz.Option{{ID: "dq-01-a", Text: "slow"}, {ID: "dq-01-b", Text: "quick"}, {ID: "dq-01-c", Text: "quiet"}, {ID: "dq-01-d", Text: "heavy"}}
+	if q.ID != "dq-01" || q.Prompt != "Choose the synonym of 'rapid'" || q.CorrectOptionID != "dq-01-b" || !reflect.DeepEqual(q.Options, want) {
+		t.Errorf("first question = %+v", q)
+	}
+	if got.Questions[1].ID != "dq-02" || got.Questions[2].ID != "dq-03" {
+		t.Error("questions out of position order")
+	}
+	if _, err := s.QuestionSet(ctx, "no-such-set"); !errors.Is(err, quiz.ErrQuestionSetNotFound) {
+		t.Errorf("unknown set: %v", err)
+	}
+	// Every seeded set loads and passes the cache's validation.
+	sets, err := s.QuestionSets(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sum := range sets {
+		full, err := s.QuestionSet(ctx, sum.ID)
+		if err != nil || len(full.Questions) != sum.QuestionCount {
+			t.Errorf("%s: %d questions, %v; want %d", sum.ID, len(full.Questions), err, sum.QuestionCount)
+		}
+		if err := quiz.ValidateSet(full); err != nil {
+			t.Errorf("%s: %v", sum.ID, err)
+		}
+	}
+}
+
+// A set that breaks the shape rules in the database is refused by the cache, not served (TRD §7.8).
+func TestCache_RefusesMalformedSetFromPostgres(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	cleanup := []string{
+		`DELETE FROM options WHERE question_id LIKE 'broken-%'`,
+		`DELETE FROM questions WHERE set_id = 'broken'`,
+		`DELETE FROM question_sets WHERE id = 'broken'`,
+	}
+	t.Cleanup(func() { // question sets survive Reset; don't leak this one into other tests
+		for _, stmt := range cleanup {
+			if _, err := env.Postgres.Exec(ctx, stmt); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	for _, stmt := range []string{
+		`INSERT INTO question_sets (id, title) VALUES ('broken', 'Broken')`,
+		`INSERT INTO questions (id, set_id, position, prompt, correct_option_id) VALUES ('broken-1', 'broken', 0, 'p', 'broken-1-z')`,
+		`INSERT INTO options (id, question_id, position, text) VALUES ('broken-1-a', 'broken-1', 0, 'a'), ('broken-1-b', 'broken-1', 1, 'b')`,
+	} {
+		if _, err := env.Postgres.Exec(ctx, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var logs bytes.Buffer
+	cache := quiz.NewCache(s, quiz.CacheOptions{MaxSets: 4, Retry: retry.New(retry.Policy{Base: time.Millisecond, Cap: time.Millisecond, Budget: time.Second}, nil),
+		AttemptTimeout: time.Second, Log: slog.New(slog.NewTextHandler(&logs, nil))})
+	if _, err := cache.Acquire(ctx, "broken"); !errors.Is(err, quiz.ErrMalformedSet) {
+		t.Fatalf("got %v, want ErrMalformedSet", err)
+	}
+	if _, ok := cache.Get("broken"); ok || !strings.Contains(logs.String(), "broken") {
+		t.Errorf("cached=%v, logs %q", ok, logs.String())
+	}
+	if set, err := cache.Acquire(ctx, "demo-quick"); err != nil || len(set.Questions) != 3 {
+		t.Errorf("good set: %v, %v", set, err)
 	}
 }

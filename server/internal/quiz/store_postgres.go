@@ -104,3 +104,43 @@ func (s *PostgresStore) Quiz(ctx context.Context, code Code) (StoredQuiz, error)
 	}
 	return q, nil
 }
+
+// QuestionSet reads a whole set with its answer key, questions and options in position order.
+// Options are left-joined so a question without options reaches validation instead of vanishing.
+func (s *PostgresStore) QuestionSet(ctx context.Context, id QuestionSetID) (QuestionSet, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT qs.title, q.id, q.prompt, q.correct_option_id, o.id, o.text
+		FROM question_sets qs
+		JOIN questions q ON q.set_id = qs.id
+		LEFT JOIN options o ON o.question_id = q.id
+		WHERE qs.id = $1
+		ORDER BY q.position, o.position`, string(id))
+	if err != nil {
+		return QuestionSet{}, fmt.Errorf("question set: %w", err)
+	}
+	defer rows.Close()
+	set := QuestionSet{ID: id}
+	for rows.Next() {
+		var qid QuestionID
+		var prompt string
+		var correct OptionID
+		var oid, text *string
+		if err := rows.Scan(&set.Title, &qid, &prompt, &correct, &oid, &text); err != nil {
+			return QuestionSet{}, fmt.Errorf("question set: %w", err)
+		}
+		if n := len(set.Questions); n == 0 || set.Questions[n-1].ID != qid {
+			set.Questions = append(set.Questions, Question{ID: qid, Prompt: prompt, CorrectOptionID: correct})
+		}
+		if oid != nil {
+			q := &set.Questions[len(set.Questions)-1]
+			q.Options = append(q.Options, Option{ID: OptionID(*oid), Text: *text})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return QuestionSet{}, fmt.Errorf("question set: %w", err)
+	}
+	if len(set.Questions) == 0 {
+		return QuestionSet{}, ErrQuestionSetNotFound
+	}
+	return set, nil
+}
