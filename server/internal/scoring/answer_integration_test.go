@@ -350,3 +350,21 @@ func boolArg(b bool) string {
 	}
 	return "0"
 }
+
+func TestRecordAnswer_WithWaitSurvivesAnEmptiedScriptCache(t *testing.T) {
+	// After a restart or failover, Redis may not have the script; a pipelined EVALSHA can't fall back to EVAL.
+	openRoom(t, "u_1")
+	repo := scoring.NewRedisRepository(env.Redis, scoring.RedisOptions{
+		OnlineWindow: 30 * time.Second, TTL: time.Hour, WaitReplicas: 1, WaitTimeout: 10 * time.Millisecond,
+	})
+	if err := env.Redis.ScriptFlush(context.Background()).Err(); err != nil {
+		t.Fatal(err)
+	}
+	res, err := repo.RecordAnswer(context.Background(), answer("u_1", "dq-01-b", true))
+	if err != nil {
+		t.Fatalf("answer after SCRIPT FLUSH: %v", err)
+	}
+	if res.Status != scoring.Accepted || res.Total != res.Points {
+		t.Errorf("result %+v", res)
+	}
+}

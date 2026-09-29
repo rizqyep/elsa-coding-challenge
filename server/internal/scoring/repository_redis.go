@@ -61,10 +61,13 @@ func (r *RedisRepository) RecordAnswer(ctx context.Context, in AnswerInput) (Ans
 		}
 		return parseAnswer(reply)
 	}
-	pipe := r.rdb.Pipeline()
-	cmd := answerScript.EvalSha(ctx, pipe, keys, args...)
-	wait := pipe.Do(ctx, "wait", r.opts.WaitReplicas, r.opts.WaitTimeout.Milliseconds()) // Pipeliner has no Wait method
-	if _, err := pipe.Exec(ctx); err != nil {
+	cmd, wait, err := r.answerWithWait(ctx, keys, args)
+	if redisx.IsNoScript(err) { // the script didn't run, so running it again can't double-count
+		if err = answerScript.Load(ctx, r.rdb); err == nil {
+			cmd, wait, err = r.answerWithWait(ctx, keys, args)
+		}
+	}
+	if err != nil {
 		return AnswerResult{}, fmt.Errorf("answer: %w", err)
 	}
 	reply, err := cmd.Slice()
@@ -75,6 +78,17 @@ func (r *RedisRepository) RecordAnswer(ctx context.Context, in AnswerInput) (Ans
 	acked, _ := wait.Int64()
 	res.Replicated = acked >= int64(r.opts.WaitReplicas)
 	return res, err
+}
+
+func (r *RedisRepository) answerWithWait(ctx context.Context, keys []string, args []any) (*redis.Cmd, *redis.Cmd, error) {
+	pipe := r.rdb.Pipeline()
+	cmd := answerScript.EvalSha(ctx, pipe, keys, args...)
+	wait := pipe.Do(ctx, "wait", r.opts.WaitReplicas, r.opts.WaitTimeout.Milliseconds()) // Pipeliner has no Wait method
+	_, err := pipe.Exec(ctx)
+	if err == nil {
+		err = cmd.Err()
+	}
+	return cmd, wait, err
 }
 
 // parseAnswer reads {status, option, correct, points, total, received_at} or {'rejected', reason}.
