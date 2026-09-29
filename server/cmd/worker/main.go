@@ -83,23 +83,30 @@ func run() error {
 	}
 	// Stop claiming; claimed work finishes. A job still claimed at exit comes back after its visibility timeout (TRD §8.4).
 	log.Info("shutting down")
-	stopLoops()
-	drained := make(chan struct{})
-	go func() { loops.Wait(); close(drained) }()
-	select {
-	case <-drained:
-	case <-time.After(cfg.ShutdownTimeout):
-		log.Warn("in-flight work still running at the shutdown timeout")
-	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), readinessTimeout)
-	defer cancel()
-	_ = srv.Shutdown(shutdownCtx)
+	w.ready.Shutdown(
+		func() {
+			stopLoops()
+			drained := make(chan struct{})
+			go func() { loops.Wait(); close(drained) }()
+			select {
+			case <-drained:
+			case <-time.After(cfg.ShutdownTimeout):
+				log.Warn("in-flight work still running at the shutdown timeout")
+			}
+		},
+		func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), readinessTimeout)
+			defer cancel()
+			_ = srv.Shutdown(shutdownCtx)
+		},
+	)
 	return err
 }
 
 // worker is the wired service: its loops and its HTTP handler.
 type worker struct {
 	handler http.Handler
+	ready   *health.Readiness
 	runner  *scheduler.Runner
 	clock   *redisx.Clock
 	log     *slog.Logger
@@ -115,15 +122,24 @@ func newWorker(ctx context.Context, cfg config.Worker, rdb redis.UniversalClient
 	if err := clock.Sync(ctx); err != nil {
 		return nil, fmt.Errorf("redis time: %w", err)
 	}
+	mismatches := prometheus.NewCounter(prometheus.CounterOpts{Name: "score_reconciliation_mismatches_total",
+		Help: "Participants whose live total differed from the total recomputed from saved answers (FR-35)."})
+	transitions := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "transitions_total",
+		Help: "Quiz transitions this worker applied, by the status entered."}, []string{"to"})
+	for _, st := range []quiz.Status{quiz.StatusQuestionOpen, quiz.StatusQuestionClosed, quiz.StatusFinished, quiz.StatusExpired} {
+		transitions.WithLabelValues(string(st))
+	}
+	reg.MustRegister(mismatches, transitions)
 	live := history.NewRedisLiveStore(rdb)
 	jobs := history.NewService(live, history.NewPostgresStore(pool), history.Options{
 		TTL: cfg.QuizDataTTL, FinalRetryDelay: finalRetryDelay,
 		OnMismatch: func(code quiz.Code, m []history.Mismatch) {
+			mismatches.Add(float64(len(m)))
 			log.Error("final totals differ from saved answers", slog.String("quiz_code", string(code)), slog.Any("mismatches", m))
 		},
 	})
 	runner := scheduler.NewRunner(log, scheduler.Loops(scheduler.Deps{
-		Transitions: quiz.NewRedisRepository(rdb), Leaderboards: leaderboard.NewRedisRepository(rdb),
+		Transitions: countedTransitions{quiz.NewRedisRepository(rdb), transitions}, Leaderboards: leaderboard.NewRedisRepository(rdb),
 		Jobs: live, Processor: jobs, NowMs: clock.NowMs,
 	}, scheduler.Settings{
 		TransitionPoll: cfg.TransitionPoll, LeaderboardTick: cfg.LeaderboardTick, FlushPoll: cfg.FlushPoll,
@@ -138,15 +154,12 @@ func newWorker(ctx context.Context, cfg config.Worker, rdb redis.UniversalClient
 		}
 		w.WriteHeader(http.StatusOK)
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := errors.Join(redisx.Ping(r.Context(), rdb, readinessTimeout), postgres.Ping(r.Context(), pool, readinessTimeout)); err != nil {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
+	ready := health.NewReadiness(func(ctx context.Context) error {
+		return errors.Join(redisx.Ping(ctx, rdb, readinessTimeout), postgres.Ping(ctx, pool, readinessTimeout))
 	})
+	mux.Handle("GET /readyz", ready.Handler())
 	mux.Handle("GET /metrics", metrics.Handler(reg))
-	return &worker{handler: mux, runner: runner, clock: clock, log: log}, nil
+	return &worker{handler: mux, ready: ready, runner: runner, clock: clock, log: log}, nil
 }
 
 // start runs the loops and the clock sync until ctx ends; Wait returns once in-flight work is done.
@@ -157,4 +170,18 @@ func (w *worker) start(ctx context.Context) *sync.WaitGroup {
 		w.clock.Run(ctx, clockSyncEvery, func(err error) { w.log.Warn("redis time sync failed", slog.Any("error", err)) })
 	})
 	return &wg
+}
+
+// countedTransitions counts applied transitions by the status they entered.
+type countedTransitions struct {
+	*quiz.RedisRepository
+	n *prometheus.CounterVec
+}
+
+func (c countedTransitions) ApplyTransition(ctx context.Context, code quiz.Code) (quiz.TransitionResult, error) {
+	res, err := c.RedisRepository.ApplyTransition(ctx, code)
+	if err == nil && res.Outcome == quiz.Applied {
+		c.n.WithLabelValues(string(res.Status)).Inc()
+	}
+	return res, err
 }

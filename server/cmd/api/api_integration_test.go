@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -24,6 +25,9 @@ import (
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/history"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/httpapi/gen"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/config"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/health"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/metrics/metricstest"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/postgres"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/redisx"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/testenv"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/quiz"
@@ -43,7 +47,10 @@ func api(t *testing.T, rdb redis.UniversalClient, pool *pgxpool.Pool) http.Handl
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := newHandler(context.Background(), cfg, rdb, pool, slog.New(slog.DiscardHandler), prometheus.NewRegistry())
+	ready := health.NewReadiness(func(ctx context.Context) error {
+		return errors.Join(redisx.Ping(ctx, rdb, time.Second), postgres.Ping(ctx, pool, time.Second))
+	})
+	h, err := newHandler(context.Background(), cfg, rdb, pool, slog.New(slog.DiscardHandler), prometheus.NewRegistry(), ready)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,4 +423,26 @@ func TestCreate_SkipsCodesHeldByOrphanRooms(t *testing.T) {
 	if host := env.Redis.HGet(ctx, redisx.RoomKey("222222"), "host_id").Val(); host != "ghost" {
 		t.Errorf("orphan room overwritten: host %q", host)
 	}
+}
+
+// The operational endpoints answer, and metrics carry no per-quiz labels (task-23, NFR-29).
+func TestOperationalEndpoints(t *testing.T) {
+	env.Reset(t)
+	srv := httptest.NewServer(api(t, env.Redis, env.Postgres))
+	defer srv.Close()
+	for _, path := range []string{"/healthz", "/readyz", "/metrics"} {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: %d", path, resp.StatusCode)
+		}
+	}
+	metricstest.AssertBoundedLabels(t, metricstest.Scrape(t, srv.URL))
 }

@@ -557,3 +557,20 @@ func TestHub_NothingToResyncOutsideARoom(t *testing.T) {
 		t.Errorf("got %s, %v", frame, err)
 	}
 }
+
+// Every broadcast reports how long it took to reach the room's local connections (broadcast_fanout_seconds).
+func TestHub_ReportsBroadcastDuration(t *testing.T) {
+	e := newHubEnv(t)
+	var mu sync.Mutex
+	var got []time.Duration
+	e.hub.onBroadcast = func(d time.Duration) { mu.Lock(); got = append(got, d); mu.Unlock() }
+	_, s1 := e.enter("AAAAAA", "u_1")
+	e.hub.OnMessage("AAAAAA", `{"t":"lb","v":3,"n":1,"top":[["u_1","Rina",200]]}`)
+	e.hub.OnMessage("AAAAAA", `{"t":"lb","v":2,"n":1,"top":[["u_1","Rina",100]]}`) // stale: dropped, not timed
+	waitFor(t, "the broadcast", func() bool { return len(s1.frames()) == 1 })
+	mu.Lock()
+	defer mu.Unlock()
+	if len(got) != 1 || got[0] < 0 {
+		t.Errorf("reported %v, want one duration for the one broadcast", got)
+	}
+}

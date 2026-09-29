@@ -20,6 +20,7 @@ import (
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/history"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/leaderboard"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/config"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/metrics/metricstest"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/redisx"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/testenv"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/protocol"
@@ -40,8 +41,9 @@ const (
 var tokens = &auth.Tokens{Key: []byte(signingKey), TTL: time.Hour}
 
 type server struct {
-	url string
-	reg *prometheus.Registry
+	url  string
+	http string // base URL for /metrics, /healthz, /readyz
+	reg  *prometheus.Registry
 }
 
 // startGateway runs the real cmd/ws wiring, with its background loops, until the test ends.
@@ -62,7 +64,7 @@ func startGateway(t *testing.T) server {
 	wg := gw.start(ctx)
 	srv := httptest.NewServer(gw.handler)
 	t.Cleanup(func() { srv.Close(); cancel(); wg.Wait() })
-	return server{url: "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws", reg: reg}
+	return server{url: "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws", http: srv.URL, reg: reg}
 }
 
 // setup resets the stores and creates a demo-quick lobby with 15 s answer windows.
@@ -281,6 +283,14 @@ func TestFlow_RealtimeQuizThroughTheGateway(t *testing.T) {
 	if n := errorsTotal(t, gw.reg, "invalid_option"); n != 1 {
 		t.Errorf("errors_total{code=invalid_option} = %v, want 1", n)
 	}
+	m := metricstest.Scrape(t, gw.http)
+	if n := m["answer_duration_seconds_count"]; n < 3 { // two for u_1 (one a duplicate), one for u_2; the invalid option never reaches Redis
+		t.Errorf("answer_duration_seconds_count = %v, want every answer that reached Redis timed", n)
+	}
+	if n := m["broadcast_fanout_seconds_count"]; n < 5 {
+		t.Errorf("broadcast_fanout_seconds_count = %v, want each question, reveal, and leaderboard broadcast timed", n)
+	}
+	metricstest.AssertBoundedLabels(t, m)
 }
 
 // A second connection on another gateway closes the first with 4000 through the kick event (FR-12).

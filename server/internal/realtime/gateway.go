@@ -154,6 +154,8 @@ type Gateway struct {
 	admission *rate.Limiter
 	upgrader  websocket.Upgrader
 	active    atomic.Int64
+	draining  atomic.Bool
+	conns     sync.Map // *Conn → struct{}; what Drain closes
 }
 
 // New returns a gateway; log may be nil.
@@ -184,6 +186,10 @@ func (g *Gateway) Active() int { return int(g.active.Load()) }
 
 // ServeHTTP rejects what it can before upgrading, so a rejected client costs no goroutine or buffer.
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if g.draining.Load() {
+		g.reject(w, time.Second)
+		return
+	}
 	if o := r.Header.Get("Origin"); o != "" && !g.origins[o] {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
 		return
@@ -211,8 +217,38 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.active.Add(-1) // the upgrader has already written the error response
 		return
 	}
-	newConn(ws, claims, g.s).run()
+	c := newConn(ws, claims, g.s)
+	g.conns.Store(c, struct{}{})
+	c.run()
+	g.conns.Delete(c)
 	g.active.Add(-1)
+}
+
+// Draining reports whether Drain has started.
+func (g *Gateway) Draining() bool { return g.draining.Load() }
+
+// Drain refuses new connections and closes open ones with 1012, each at a random point in window, so
+// clients reconnect elsewhere a few at a time (TRD §7.9). It returns how many were still open when ctx ended.
+func (g *Gateway) Drain(ctx context.Context, window time.Duration) int {
+	g.draining.Store(true)
+	ms := max(int(window/time.Millisecond), 1)
+	g.conns.Range(func(k, _ any) bool {
+		c := k.(*Conn)
+		time.AfterFunc(time.Duration(g.s.opts.RandIntN(ms))*time.Millisecond, func() {
+			c.Close(websocket.CloseServiceRestart, "server restarting")
+		})
+		return true
+	})
+	t := time.NewTicker(20 * time.Millisecond)
+	defer t.Stop()
+	for g.Active() > 0 {
+		select {
+		case <-ctx.Done():
+			return g.Active()
+		case <-t.C:
+		}
+	}
+	return 0
 }
 
 func (g *Gateway) takeSlot() bool {

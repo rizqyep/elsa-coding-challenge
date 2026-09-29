@@ -40,6 +40,7 @@ type HubOptions struct {
 	FanoutConcurrency int           // Redis reads for rank and resubscribe fan-outs running at once
 	ReadTimeout       time.Duration // per Redis read made for a fan-out or a shared room view
 	Log               *slog.Logger
+	OnBroadcast       func(time.Duration) // optional: time to queue one room event for every local connection
 }
 
 // Hub connects local connections to their rooms: registry, room events, and snapshots (TRD §7.4, §7.5).
@@ -52,6 +53,7 @@ type Hub struct {
 	fanout      chan struct{}
 	readTimeout time.Duration
 	views       singleflight.Group
+	onBroadcast func(time.Duration)
 }
 
 // NewHub returns a hub; call Attach before use.
@@ -69,7 +71,7 @@ func NewHub(cache QuestionCache, rooms RoomReader, o HubOptions) *Hub {
 		o.Log = slog.New(slog.DiscardHandler)
 	}
 	return &Hub{reg: newRegistry(o.Shards), cache: cache, rooms: rooms, log: o.Log,
-		fanout: make(chan struct{}, o.FanoutConcurrency), readTimeout: o.ReadTimeout}
+		fanout: make(chan struct{}, o.FanoutConcurrency), readTimeout: o.ReadTimeout, onBroadcast: o.OnBroadcast}
 }
 
 // Attach sets the subscriptions; the subscriber and the hub refer to each other.
@@ -146,7 +148,11 @@ func (h *Hub) OnMessage(code quiz.Code, payload string) {
 	if !ok {
 		return
 	}
+	start := time.Now()
 	h.broadcast(code, typ, msg)
+	if h.onBroadcast != nil {
+		h.onBroadcast(time.Since(start))
+	}
 	if ev.T == eventState && ev.S == quiz.StatusQuestionClosed {
 		h.fanOut(func(ctx context.Context) { h.sendRanks(ctx, code, ev.Q) })
 	}

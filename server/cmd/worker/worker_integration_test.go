@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/config"
+	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/metrics/metricstest"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/redisx"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/platform/testenv"
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/internal/quiz"
@@ -189,6 +190,17 @@ func TestWorkers_RunAQuizOnTheirOwn(t *testing.T) {
 	if status != "finished" || saved != 6 || leader != "u_1" || top != total {
 		t.Errorf("archived: status %s, %d answers, leader %s with %d; want finished, 6, u_1 with %d", status, saved, leader, top, total)
 	}
+
+	m := metricstest.Scrape(t, a.URL, b.URL)
+	for to, want := range map[string]float64{"question_open": 3, "question_closed": 3, "finished": 1} {
+		if got := m[`transitions_total{to="`+to+`"}`]; got != want {
+			t.Errorf("transitions_total{to=%q} = %v across both workers, want %v", to, got, want)
+		}
+	}
+	if got, ok := m["score_reconciliation_mismatches_total"]; !ok || got != 0 {
+		t.Errorf("score_reconciliation_mismatches_total = %v (exported %v), want 0 (FR-35)", got, ok)
+	}
+	metricstest.AssertBoundedLabels(t, m)
 
 	for _, srv := range []*httptest.Server{a, b} {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/healthz", nil)

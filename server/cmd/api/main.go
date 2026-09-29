@@ -58,7 +58,10 @@ func run() error {
 	}
 	defer pool.Close()
 
-	handler, err := newHandler(ctx, cfg, rdb, pool, log, metrics.NewRegistry())
+	ready := health.NewReadiness(func(ctx context.Context) error {
+		return errors.Join(redisx.Ping(ctx, rdb, time.Second), postgres.Ping(ctx, pool, time.Second))
+	})
+	handler, err := newHandler(ctx, cfg, rdb, pool, log, metrics.NewRegistry(), ready)
 	if err != nil {
 		return err
 	}
@@ -78,14 +81,16 @@ func run() error {
 	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("shutdown: %w", err)
+	var shutdownErr error
+	ready.Shutdown(func() { shutdownErr = srv.Shutdown(shutdownCtx) }) // in-flight requests finish
+	if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
+		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	return nil
 }
 
 // newHandler wires the REST API over Redis and PostgreSQL.
-func newHandler(ctx context.Context, cfg config.API, rdb redis.UniversalClient, pool *pgxpool.Pool, log *slog.Logger, reg *prometheus.Registry) (http.Handler, error) {
+func newHandler(ctx context.Context, cfg config.API, rdb redis.UniversalClient, pool *pgxpool.Pool, log *slog.Logger, reg *prometheus.Registry, ready *health.Readiness) (http.Handler, error) {
 	if err := redisx.LoadScripts(ctx, rdb, append(quiz.Scripts(), leaderboard.Scripts()...)...); err != nil {
 		return nil, err
 	}
@@ -97,9 +102,7 @@ func newHandler(ctx context.Context, cfg config.API, rdb redis.UniversalClient, 
 	return httpapi.New(httpapi.Config{
 		Quizzes: quizzes, Leaderboards: boards, DevTokens: cfg.DevTokensEnabled,
 		Tokens: &auth.Tokens{Key: cfg.AuthSigningKey, TTL: cfg.AuthTokenTTL},
-		Ready: func(ctx context.Context) error {
-			return errors.Join(redisx.Ping(ctx, rdb, time.Second), postgres.Ping(ctx, pool, time.Second))
-		},
-		Log: log, Metrics: reg, RequestTimeout: requestTimeout,
+		Ready:  ready.Check,
+		Log:    log, Metrics: reg, RequestTimeout: requestTimeout,
 	})
 }

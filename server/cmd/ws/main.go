@@ -39,6 +39,13 @@ const (
 	setLoadAttempt   = 2 * time.Second
 	clockSyncEvery   = 30 * time.Second
 	readinessTimeout = time.Second
+	drainShare       = 3 // sockets close across the first third of SHUTDOWN_TIMEOUT (TRD §7.9)
+)
+
+// Histogram buckets around the latency targets (non-functional §2).
+var (
+	answerBuckets = []float64{.002, .005, .01, .025, .05, .1, .25, .5, 1}
+	fanoutBuckets = []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5}
 )
 
 func main() {
@@ -88,11 +95,20 @@ func run() error {
 		return fmt.Errorf("serve: %w", err)
 	case <-ctx.Done():
 	}
-	log.Info("shutting down") // draining open connections with 1012 is task-22
+	log.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return fmt.Errorf("shutdown: %w", err)
+	var shutdownErr error
+	gw.ready.Shutdown(
+		func() {
+			if left := gw.ws.Drain(shutdownCtx, cfg.ShutdownTimeout/drainShare); left > 0 {
+				log.Warn("connections still open after the drain", "open", left)
+			}
+		},
+		func() { shutdownErr = srv.Shutdown(shutdownCtx) },
+	)
+	if shutdownErr != nil && !errors.Is(shutdownErr, http.ErrServerClosed) {
+		return fmt.Errorf("shutdown: %w", shutdownErr)
 	}
 	return nil
 }
@@ -100,6 +116,8 @@ func run() error {
 // gateway is the wired service: its HTTP handler and the loops that run beside it.
 type gateway struct {
 	handler  http.Handler
+	ws       *realtime.Gateway
+	ready    *health.Readiness
 	sub      *realtime.Subscriber
 	hub      *realtime.Hub
 	sessions *session.RedisRepository
@@ -116,7 +134,13 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	cache := quiz.NewCache(quiz.NewPostgresStore(pool), quiz.CacheOptions{MaxSets: cfg.QuestionCacheMaxSets,
 		Retry: retry.New(cfg.DBRetry, nil), AttemptTimeout: setLoadAttempt, Log: log})
 	sessions := session.NewRedisRepository(rdb)
-	hub := realtime.NewHub(cache, sessions, realtime.HubOptions{Shards: cfg.RegistryShards, Log: log})
+	fanout := prometheus.NewHistogram(prometheus.HistogramOpts{Name: "broadcast_fanout_seconds",
+		Help: "Time to queue one room event for every local connection (NFR-6, NFR-8).", Buckets: fanoutBuckets})
+	answerSeconds := prometheus.NewHistogram(prometheus.HistogramOpts{Name: "answer_duration_seconds",
+		Help: "Time to record one answer in Redis, WAIT included (NFR-7).", Buckets: answerBuckets})
+	reg.MustRegister(fanout, answerSeconds)
+	hub := realtime.NewHub(cache, sessions, realtime.HubOptions{Shards: cfg.RegistryShards, Log: log,
+		OnBroadcast: func(d time.Duration) { fanout.Observe(d.Seconds()) }})
 	sub := realtime.NewSubscriber(rdb, hub, realtime.SubscriberOptions{Log: log})
 	hub.Attach(sub)
 
@@ -126,8 +150,9 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	}
 	answers := scoring.NewService(scoring.NewRedisRepository(rdb, scoring.RedisOptions{OnlineWindow: cfg.PresenceTTL,
 		TTL: cfg.QuizDataTTL, WaitReplicas: cfg.RedisWaitReplicas, WaitTimeout: cfg.RedisWaitTimeout}), answerTimeout)
+	timed := timedAnswers{answers, answerSeconds}
 	handler := realtime.NewMessageHandler(realtime.HandlerDeps{Hub: hub, Joiner: sessions, Rooms: quiz.NewRedisRepository(rdb),
-		Answers: answers, Finals: leaderboard.NewPostgresStore(pool), Clock: clock, DataTTL: cfg.QuizDataTTL})
+		Answers: timed, Finals: leaderboard.NewPostgresStore(pool), Clock: clock, DataTTL: cfg.QuizDataTTL})
 
 	errorsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "errors_total", Help: "Errors sent to clients, by code (TRD §9.6)."},
 		[]string{"service", "code"})
@@ -141,15 +166,12 @@ func newGateway(ctx context.Context, cfg config.Gateway, rdb redis.UniversalClie
 	mux := http.NewServeMux()
 	mux.Handle("GET /ws", ws)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := errors.Join(redisx.Ping(r.Context(), rdb, readinessTimeout), postgres.Ping(r.Context(), pool, readinessTimeout)); err != nil {
-			http.Error(w, "not ready", http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
+	ready := health.NewReadiness(func(ctx context.Context) error {
+		return errors.Join(redisx.Ping(ctx, rdb, readinessTimeout), postgres.Ping(ctx, pool, readinessTimeout))
 	})
+	mux.Handle("GET /readyz", ready.Handler())
 	mux.Handle("GET /metrics", metrics.Handler(reg))
-	return &gateway{handler: mux, sub: sub, hub: hub, sessions: sessions, clock: clock, presence: cfg.PresenceRefresh, log: log}, nil
+	return &gateway{handler: mux, ws: ws, ready: ready, sub: sub, hub: hub, sessions: sessions, clock: clock, presence: cfg.PresenceRefresh, log: log}, nil
 }
 
 // start runs the subscriber, presence refresh, and clock sync until ctx ends; Wait blocks until they stop.
@@ -161,4 +183,17 @@ func (g *gateway) start(ctx context.Context) *sync.WaitGroup {
 		g.clock.Run(ctx, clockSyncEvery, func(err error) { g.log.Warn("redis time sync failed", slog.Any("error", err)) })
 	})
 	return &wg
+}
+
+// timedAnswers observes how long each answer takes to record.
+type timedAnswers struct {
+	inner realtime.AnswerSubmitter
+	h     prometheus.Histogram
+}
+
+func (t timedAnswers) SubmitAnswer(ctx context.Context, in scoring.AnswerInput) (scoring.AnswerResult, error) {
+	start := time.Now()
+	res, err := t.inner.SubmitAnswer(ctx, in)
+	t.h.Observe(time.Since(start).Seconds())
+	return res, err
 }
