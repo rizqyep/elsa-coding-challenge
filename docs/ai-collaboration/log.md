@@ -730,3 +730,11 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **What the AI added beyond the plan:** a check that no answer is accepted at or after its question's close time, including an explicit late answer while every worker is stopped. This is the case where the answer script alone has to enforce the deadline.
 - **What it didn't claim:** the kick test goes through nginx, so it can't force two gateways; the worker-kill run can't prove it hit mid-flush. Both point to the lower-level tests that do pin those paths.
 - **Verification:** 13/13 in 305 s; every room with 0 violations, 0 point or total mismatches, and reconciliation 0. `make check` green.
+
+### AI-039: The simulator and k6 (task-28)
+
+- **Date / phase:** 2026-09-30 · P5 Stack and verification
+- **What the AI produced:** `cmd/sim`, which runs YAML scenarios through the test kit with a live line, NFR checks, a JSON report, and exit code 1 on any failed check; the five scenario files; a k6 script for many-rooms; `make sim` (with a container fallback) and `make k6`.
+- **How the AI showed the checks can fail:** a throwaway scenario with +150 ms of Redis latency failed NFR-7 and exited 1, and the simulator cleaned up its toxic afterwards.
+- **What the AI got wrong, found by running it:** the k6 WebSocket import (`k6/websockets` doesn't exist in k6 1.3; probing the image found `k6/experimental/websockets`), and the container fallback writing a root-owned, unreadable report. Both fixed and rerun.
+- **Verification:** small runs of `big-room` (every check PASS), the failing scenario (exit 1), k6 (100 players, all thresholds met), and the fallback before and after the ownership fix. `make check` green.

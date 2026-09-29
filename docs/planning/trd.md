@@ -1106,43 +1106,51 @@ Prerequisites: Docker with Compose v2.23+ (for `--wait` on a stack with a one-sh
 
 ### 11.4 Simulation control
 
-`cmd/sim` runs a scenario file through the test kit against the running stack. Everything in the file can be overridden from the command line, so a run can be adjusted without editing files.
+`cmd/sim` runs a scenario file through the test kit (§10.3) against the running stack. Everything in the file can be overridden from the command line, so a run can be adjusted without editing files.
 
 ```yaml
 # loadtest/scenarios/big-room.yaml
 name: big-room
-questionSet: synonyms-everyday
-questions: 5                 # use the first N questions of the set
+questionSet: demo-quick      # the API has no per-quiz question count, so the set decides (3 questions)
 window: 10s
 reveal: 3s
 rooms: 1
 participantsPerRoom: 5000
 joinRampUp: 20s              # spread joins; 0 = all at once (join storm)
+roomStagger: 0s              # gap between room starts (many-rooms)
 answers:
-  within: 2s                 # all answers land within 2 s of the question opening
+  within: 2s                 # all answers land within 2 s of the question arriving
   correctRatio: 0.7
   noAnswerRatio: 0.02        # some participants don't answer (tests the deadline path)
-slowClients: 0               # ratio of clients that read slowly
-chaos:                       # optional timed faults
-  - at: question:2+1s
-    action: kill ws-1
-assert: [nfr6, nfr7, nfr8, reconciliation]
+slowClients: 0               # share of clients that read slowly (200 ms per message)
+chaos:                       # optional timed faults, anchored to the first room
+  - at: question:2+1s        # or start+5s
+    action: kill ws-1        # stop worker · redis-latency 20 · redis-down 5s · pg-down 10s
+seed: 1
+assert: [nfr6, nfr7, nfr8, nfr9, reconciliation, no-errors]   # also: transition-lag, rejoin
 ```
 
 ```bash
 make sim SCENARIO=big-room PARTICIPANTS=10000 WINDOW=15s
 make sim SCENARIO=many-rooms ROOMS=500
-make sim SCENARIO=big-room CHAOS=off
+make sim SCENARIO=gateway-crash CHAOS=off
+cd server && go run ./cmd/sim ../loadtest/scenarios/big-room.yaml participants=10000 ramp=30s slow=0.05 seed=9
 ```
 
+Unknown fields in a scenario are errors, so a typo can't silently do nothing. Overrides: `participants`, `rooms`, `window`, `reveal`, `ramp`, `within`, `slow`, `seed`, `chaos=off`.
+
+**Checks.** Each assert is a target from non-functional §2: `nfr6` p95 < 500 ms, `nfr7` p95 < 100 ms and p99 < 250 ms, `nfr8` p95 < 200 ms, `nfr9` p95 < 300 ms, `transition-lag` p95 < 250 ms, `rejoin` slowest reconnect < 15 s, `reconciliation` (no point or total mismatch and `score_reconciliation_mismatches_total` unchanged), `no-errors`. A `clean` check always runs: everyone joined and finished, no protocol violations, no failed chaos step. Percentiles across rooms come from merged raw latencies, not averages.
+
 **Output:**
-- A live summary in the terminal: connected, answered, current p50/p95/p99 for NFR-6/7/8, errors by code.
-- A JSON report in `loadtest/results/<scenario>-<timestamp>.json` with the config, machine info, and final percentiles.
-- Exit code ≠ 0 if any `assert` fails, so a scenario can gate CI.
+- A live line every 2 s: joined, answers, accepted, errors, finished.
+- A PASS/FAIL line per check, and a JSON report in `loadtest/results/<scenario>-<timestamp>.json` with the config, machine (CPU, memory, kernel), stack size, results, and checks.
+- Exit code 1 if any check fails, so a scenario can gate CI. The simulator removes its faults and restarts stopped containers before exiting.
 
-**Docker access:** chaos steps that kill or pause containers call Docker. When the simulator runs on the host it uses the local Docker CLI. The containerised fallback mounts the Docker socket only for scenarios that contain such steps.
+**Docker access:** chaos steps call the Docker CLI and Toxiproxy's API. Without Go on the host, `make sim` runs the simulator in a `golang` container on the host network, mounting the Docker socket only for scenarios that contain chaos steps.
 
-**Client-side limits:** the simulator raises its own open-file limit. One machine can open about 28,000 connections to a single address:port before running out of local ports. That covers the 10,000-person target. Beyond it, the simulator can spread connections across several source IPs.
+**k6:** `make k6 ROOMS=50 PER_ROOM=20` runs `loadtest/k6/many-rooms.js` in the `grafana/k6` image: an independent load generator for the many-rooms shape, with thresholds on answer latency, question delivery, errors, and every player finishing. It doesn't check scores; the Go simulator does. (In k6 1.3 the WebSocket module is still `k6/experimental/websockets`.)
+
+**Client-side limits:** the simulator raises its own open-file limit. One machine can open about 28,000 connections to a single address:port before running out of local ports. That covers the 10,000-person target.
 
 ### 11.5 Failure switches
 
