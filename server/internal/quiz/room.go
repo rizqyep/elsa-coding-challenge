@@ -111,15 +111,16 @@ var (
 	ErrNoParticipants = errors.New("the quiz has no participants yet")
 )
 
-// Start records the host's start request (FR-3); a second start is a no-op.
+// Start records the host's start request (FR-3). Repeating it while the quiz runs is a no-op (openapi.yaml startQuiz).
 func Start(r Room, caller ParticipantID, participants int, now int64) (Room, error) {
+	running := r.Status == StatusLobby || r.Status == StatusQuestionOpen || r.Status == StatusQuestionClosed
 	switch {
 	case caller != r.HostID:
 		return r, ErrNotHost
+	case r.StartRequested && running:
+		return r, nil
 	case r.Status != StatusLobby:
 		return r, ErrNotInLobby
-	case r.StartRequested:
-		return r, nil
 	case participants < 1:
 		return r, ErrNoParticipants
 	}

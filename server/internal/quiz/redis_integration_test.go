@@ -116,7 +116,10 @@ func TestStart_MatchesDomainRules(t *testing.T) {
 		{"not the host", quiz.StatusLobby, false, 2, "u_1"},
 		{"not the host and not in the lobby (host check first)", quiz.StatusQuestionOpen, true, 2, "u_1"},
 		{"no participants", quiz.StatusLobby, false, 0, "host_1"},
-		{"already running", quiz.StatusQuestionOpen, true, 2, "host_1"},
+		{"host retries after question 1 opened", quiz.StatusQuestionOpen, true, 2, "host_1"},
+		{"host retries during a reveal", quiz.StatusQuestionClosed, true, 2, "host_1"},
+		{"finished quiz", quiz.StatusFinished, true, 2, "host_1"},
+		{"lobby expired without a start", quiz.StatusExpired, false, 2, "host_1"},
 		{"start requested twice", quiz.StatusLobby, true, 2, "host_1"},
 	}
 	for _, tc := range cases {

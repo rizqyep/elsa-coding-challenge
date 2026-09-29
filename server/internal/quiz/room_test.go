@@ -67,10 +67,15 @@ func lobby() quiz.Room {
 
 func TestStart(t *testing.T) {
 	const now = 1_000
-	open := lobby()
-	open.Status = quiz.StatusQuestionOpen
 	already := lobby()
 	already.StartRequested, already.NextTransitionAt = true, 500
+	running := func(s quiz.Status) quiz.Room {
+		r := lobby()
+		r.Status, r.StartRequested, r.QuestionIndex = s, true, 0
+		return r
+	}
+	expired := lobby()
+	expired.Status = quiz.StatusExpired
 
 	cases := []struct {
 		name         string
@@ -87,7 +92,11 @@ func TestStart(t *testing.T) {
 		}()},
 		{"not the host", lobby(), "u_1", 1, quiz.ErrNotHost, lobby()},
 		{"no participants yet (FR-3)", lobby(), "host_1", 0, quiz.ErrNoParticipants, lobby()},
-		{"already running", open, "host_1", 5, quiz.ErrNotInLobby, open},
+		{"host retries after question 1 opened (idempotent)", running(quiz.StatusQuestionOpen), "host_1", 5, nil, running(quiz.StatusQuestionOpen)},
+		{"host retries during a reveal (idempotent)", running(quiz.StatusQuestionClosed), "host_1", 5, nil, running(quiz.StatusQuestionClosed)},
+		{"not the host while running", running(quiz.StatusQuestionOpen), "u_1", 5, quiz.ErrNotHost, running(quiz.StatusQuestionOpen)},
+		{"finished quiz", running(quiz.StatusFinished), "host_1", 5, quiz.ErrNotInLobby, running(quiz.StatusFinished)},
+		{"lobby expired without a start", expired, "host_1", 5, quiz.ErrNotInLobby, expired},
 		{"start requested twice is idempotent", already, "host_1", 1, nil, already},
 	}
 	for _, tc := range cases {

@@ -259,7 +259,7 @@ Every transition increments `StateVersion`. **Exactly-once (NFR-14) comes from t
 
 | Command | Allowed when | Effect |
 |---|---|---|
-| `Start` (host) | `lobby`, caller is host, ≥ 1 participant | `StartRequested = true`, `NextTransitionAt = now` (FR-3) |
+| `Start` (host) | `lobby`, caller is host, ≥ 1 participant | `StartRequested = true`, `NextTransitionAt = now` (FR-3). Repeating it while the quiz runs changes nothing and succeeds |
 | `EarlyClose` (from the answer script) | `question_open`, accepted answers ≥ online participants | `CloseAt = now`, `NextTransitionAt = now` (FR-5). `Deadline` is unchanged |
 
 > **Why `Deadline` and `CloseAt` are separate** (found while writing this section): if early close simply moved the one deadline, anything computed from it later (speed bonus, audit rows, a reconnecting client's countdown) would silently use the shortened value. Keeping the original `Deadline` for scoring and a separate `CloseAt` for acceptance means early close can never change anyone's points.
@@ -408,7 +408,7 @@ Presence refresh (`ZADD online`) and personal rank lookups (`ZSCORE` + `ZCOUNT`)
 
 - **KEYS:** `room`, `lb`, `sched:transitions`
 - **ARGV:** code, caller_id
-- **Steps** (same order as `quiz.Start`): caller ≠ `host_id` → `{rejected, not_host}`. Not `lobby` → `{rejected, not_in_lobby}`. `ZCARD lb = 0` → `{rejected, no_participants}`. Already `start_requested` → `{ok}` (idempotent). Otherwise set `start_requested=1`, `next_at=now`, `ZADD sched:transitions now code`.
+- **Steps** (same order as `quiz.Start`): caller ≠ `host_id` → `{rejected, not_host}`. Already `start_requested` and still running (`lobby`, `question_open`, `question_closed`) → `{ok}`, so a host retrying a timed-out start gets 202, not a false 409. Not `lobby` (finished, expired) → `{rejected, not_in_lobby}`. `ZCARD lb = 0` → `{rejected, no_participants}`. Otherwise set `start_requested=1`, `next_at=now`, `ZADD sched:transitions now code`.
 - **Returns:** `{ok}`
 
 #### `answer`
@@ -835,7 +835,7 @@ Every call carries a `context` deadline. Nothing waits forever.
 | Answer script timed out or failed | **Nobody on the server.** The client resends with the same request ID | Client backoff (§9.5) | If the first attempt did apply, the resend gets `duplicate` with the original result (FR-18). A server-side retry would hide the ambiguity |
 | Question-set load | Gateway / API, inside single-flight | Full-jitter backoff: base 100 ms, cap 5 s, budget 10 s | Read-only |
 | Quiz creation | Client (host) after 503 | — | Transaction rolls back on failure; no half-created quiz |
-| Transition, leaderboard tick | Next scheduler poll | Automatic (100 / 200 ms) | Version check / monotonic version |
+| Transition, leaderboard tick | Next scheduler poll | Automatic (100 / 200 ms) | The transition script applies only what is due, atomically; leaderboard versions only increase |
 | Answer flush, finalise | Visibility timeout | Job due again after 30 s; repeated failures raise `flush_failures_total` | Primary key + `ON CONFLICT DO NOTHING`; one transaction |
 | Pub/sub subscription dropped | Gateway | Reconnect with full-jitter backoff (100 ms → 5 s), resubscribe every local room, **then send a fresh `snapshot` to each local connection** | Snapshots are complete and versioned, so nothing missed while disconnected matters |
 | Presence refresh failed | Next refresh | — | Last-seen only moves forward |
