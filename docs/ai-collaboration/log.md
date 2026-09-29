@@ -473,3 +473,35 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
   - End-to-end finalisation reconciles with 0 mismatches.
   - Four mutations, all caught: `pending_flush` going negative, acknowledging after a failed save, claims not hidden, finalising before flushes.
   - `make check` and `make test-integration` green.
+
+### AI-027: Auth, REST API, and end-to-end leaderboard tests (task-15, task-16)
+
+- **Date / phase:** 2026-09-29 · P3 Services
+- **My input:** I chose to do auth and the REST API before the gateway, so the leaderboard flow could be tested end to end first, and asked for more integration tests afterwards.
+- **What the AI produced:**
+  - HS256 tokens with the algorithm pinned;
+  - the quiz service and PostgreSQL store;
+  - paginated leaderboards from Redis or final results;
+  - a shared transient-error classifier;
+  - the REST handlers behind a contract middleware (route → authenticate → validate against `openapi.yaml`);
+  - `cmd/api` wiring;
+  - integration tests through that wiring, with Toxiproxy faults.
+- **Catches:**
+  - **Spec vs implementation:** `openapi.yaml` promised start is idempotent, but the rule returned 409 once question 1 opened, so a host retrying a timed-out start got a false error. Fixed in Go and Lua with shared cases.
+  - **The contract tests found spec gaps:** validating every response *including its status* showed the spec omitted 400 on the code and pagination routes and documented no 500 at all.
+  - **The fail-closed access table worked on its first run.** The embedded spec names operations `StartQuiz`, not `startQuiz`, so every operation looked unprotected and the API refused to start, instead of silently running without auth.
+  - **Error details leaked validator internals.** A throwaway test printed the real 400 bodies, which showed the cleanup never ran because kin-openapi nests the text in `SchemaError.Reason`. Fixed and pinned with a test.
+  - **Tie order could differ between live and archived leaderboards** on a database with a locale collation. `COLLATE "C"` fixes it, but the mutation first *survived* because the Alpine test image sorts bytewise. The test now forces an ICU collation, and the mutation is caught.
+  - **Suspicions that turned out false, checked rather than assumed:**
+    - a PostgreSQL millisecond-rounding risk (a million values round-trip exactly);
+    - a "failing" expired-token test (the fixture's expiry was later than the current UTC time);
+    - a deterministic failure first taken for a flaky test (pgx's cached statement plan predating the test's `ALTER`).
+  - **Three mutants didn't compile**, so they proved nothing; they were redone.
+- **Verification:**
+  - Tests were written first for each piece.
+  - Every handler-test response is validated against the spec.
+  - The full flow runs through the real wiring and checks that archived results equal the live ones.
+  - 21 mutations were caught.
+  - The integration package was run 4 times with no flakes, and a smoke run of the real binary succeeded.
+  - Each commit builds and passes unit tests on its own.
+  - `make check` and `make test-integration` are green.
