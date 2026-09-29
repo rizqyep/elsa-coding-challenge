@@ -2,6 +2,7 @@ version: "2"
 
 run:
   timeout: 5m
+  build-tags: [integration]   # lint integration tests too
 
 linters:
   default: standard        # errcheck, govet, ineffassign, staticcheck, unused

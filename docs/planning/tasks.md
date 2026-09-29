@@ -135,7 +135,7 @@ flowchart LR
 | [task-07](tasks/p1-domain/task-07-scoring-and-ranks.md) | Scoring and ranks | P1 | S | yes | done |
 | [task-08](tasks/p1-domain/task-08-quiz-state-machine.md) | Quiz state machine | P1 | M | yes | done |
 | [task-09](tasks/p1-domain/task-09-protocol-package.md) | Protocol package | P1 | M | yes | done |
-| [task-10](tasks/p2-redis-scripts/task-10-integration-test-harness.md) | Integration test harness | P2 | S | — | todo |
+| [task-10](tasks/p2-redis-scripts/task-10-integration-test-harness.md) | Integration test harness | P2 | S | — | done |
 | [task-11](tasks/p2-redis-scripts/task-11-scripts-create-room-start-join.md) | Scripts: `create_room`, `start`, `join` | P2 | M | yes | todo |
 | [task-12](tasks/p2-redis-scripts/task-12-script-answer.md) | Script: `answer` | P2 | L | yes | todo |
 | [task-13](tasks/p2-redis-scripts/task-13-scripts-transition-leaderboard.md) | Scripts: `transition`, `leaderboard` | P2 | L | yes | todo |

@@ -1,5 +1,4 @@
 // Command migrate applies the database schema and, when APP_ENV=local, the seed data.
-// It runs as a one-shot service before the API, gateways, and workers start.
 package main
 
 import (
@@ -7,21 +6,13 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver
-	"github.com/pressly/goose/v3"
 
 	"github.com/rizqyep/rizqyep-elsa-assignment/server/migrations"
-)
-
-const (
-	schemaTable = "goose_db_version"
-	seedTable   = "goose_seed_version"
-	timeout     = 60 * time.Second
 )
 
 func main() {
@@ -37,9 +28,9 @@ func run(logger *slog.Logger) error {
 	if dsn == "" {
 		return errors.New("POSTGRES_DSN is required")
 	}
-	appEnv := os.Getenv("APP_ENV")
+	seed := os.Getenv("APP_ENV") == "local"
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	db, err := sql.Open("pgx", dsn)
@@ -55,32 +46,13 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("connect to database: %w", err)
 	}
 
-	if err := apply(ctx, logger, db, "schema", migrations.Schema(), schemaTable); err != nil {
+	results, err := migrations.Apply(ctx, db, seed)
+	for _, r := range results {
+		logger.Info("migration applied", "set", r.Set, "version", r.Version, "file", r.File, "duration", r.Duration.String())
+	}
+	if err != nil {
 		return err
 	}
-	if appEnv != "local" {
-		logger.Info("seed skipped", "app_env", appEnv)
-		return nil
-	}
-	seed, err := migrations.Seed()
-	if err != nil {
-		return fmt.Errorf("load seed migrations: %w", err)
-	}
-	return apply(ctx, logger, db, "seed", seed, seedTable)
-}
-
-func apply(ctx context.Context, logger *slog.Logger, db *sql.DB, name string, fsys fs.FS, table string) error {
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, fsys, goose.WithTableName(table))
-	if err != nil {
-		return fmt.Errorf("%s: create provider: %w", name, err)
-	}
-	results, err := provider.Up(ctx)
-	if err != nil {
-		return fmt.Errorf("%s: apply migrations: %w", name, err)
-	}
-	for _, r := range results {
-		logger.Info("migration applied", "set", name, "version", r.Source.Version, "file", r.Source.Path, "duration", r.Duration.String())
-	}
-	logger.Info("migrations up to date", "set", name, "applied_now", len(results))
+	logger.Info("migrations up to date", "applied_now", len(results), "seed", seed)
 	return nil
 }
