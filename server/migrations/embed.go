@@ -1,6 +1,8 @@
 // Package migrations holds the embedded SQL migrations and applies them (TRD §5.5).
 package migrations
 
+// AI-assisted: AI-017 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"database/sql"

@@ -1,6 +1,8 @@
 // Command ws runs the WebSocket gateway (TRD §7).
 package main
 
+// AI-assisted: AI-031, AI-036 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"errors"

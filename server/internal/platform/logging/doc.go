@@ -1,2 +1,4 @@
 // Package logging sets up structured JSON logging with quiz, participant, connection, and request IDs (NFR-28).
 package logging
+
+// AI-assisted: AI-018 (docs/ai-collaboration/log.md).

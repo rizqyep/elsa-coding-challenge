@@ -1,6 +1,8 @@
 // Package health runs a service's own readiness check, for container healthchecks on distroless images (TRD §11.2).
 package health
 
+// AI-assisted: AI-034 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"fmt"

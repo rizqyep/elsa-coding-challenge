@@ -2,3 +2,5 @@
 // simulator alike (TRD §10.3): a protocol client that validates every message, a room scenario
 // runner, fault steps, independent score checks, and latency recording.
 package testkit
+
+// AI-assisted: AI-037 (docs/ai-collaboration/log.md).

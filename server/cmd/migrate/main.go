@@ -1,6 +1,8 @@
 // Command migrate applies the database schema and, when APP_ENV=local, the seed data.
 package main
 
+// AI-assisted: AI-017 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"database/sql"

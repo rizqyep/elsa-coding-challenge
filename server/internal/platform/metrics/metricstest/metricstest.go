@@ -1,6 +1,8 @@
 // Package metricstest reads /metrics the way Prometheus does, for integration tests and the test kit.
 package metricstest
 
+// AI-assisted: AI-036 (docs/ai-collaboration/log.md).
+
 import (
 	"bufio"
 	"context"

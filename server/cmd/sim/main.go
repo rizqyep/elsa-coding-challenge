@@ -3,6 +3,8 @@
 //	sim [flags] loadtest/scenarios/big-room.yaml [participants=10000 window=15s chaos=off ...]
 package main
 
+// AI-assisted: AI-039, AI-040 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"encoding/json"

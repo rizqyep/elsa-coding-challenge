@@ -1,6 +1,8 @@
 // Command worker runs the quiz clock, leaderboard ticks, and persistence jobs (TRD §8).
 package main
 
+// AI-assisted: AI-032, AI-036 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"errors"

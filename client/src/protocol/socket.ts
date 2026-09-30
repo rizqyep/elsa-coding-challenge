@@ -1,3 +1,4 @@
+// AI-assisted: AI-033, AI-035 (docs/ai-collaboration/log.md).
 import { backoffMs, closeAction, offsetFromPong } from './policy'
 import type { ServerMessage } from './types'
 

@@ -1,3 +1,4 @@
+// AI-assisted: AI-033 (docs/ai-collaboration/log.md).
 import type { Leaderboard, LeaderboardEntry, PublicQuestion, QuizState } from '../protocol/messages'
 import type { ErrorCode, ServerMessage } from '../protocol/types'
 

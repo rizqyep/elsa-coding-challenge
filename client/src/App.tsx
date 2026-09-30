@@ -1,3 +1,4 @@
+// AI-assisted: AI-033 (docs/ai-collaboration/log.md).
 import { useState } from 'react'
 import { normalizeCode } from './views/code'
 import { Home } from './views/Home'

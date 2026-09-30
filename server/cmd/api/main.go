@@ -1,6 +1,8 @@
 // Command api runs the REST API (TRD §6.2).
 package main
 
+// AI-assisted: AI-027 (docs/ai-collaboration/log.md).
+
 import (
 	"context"
 	"errors"
