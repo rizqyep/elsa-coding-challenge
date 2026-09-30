@@ -71,7 +71,6 @@ server/
 │       ├── config/            # env parsing and validation
 │       ├── logging/           # slog setup, context fields
 │       ├── metrics/           # Prometheus registry and metric definitions
-│       ├── tracing/           # OpenTelemetry setup
 │       ├── redisx/            # client, script loader, key names
 │       ├── postgres/          # pool and helpers (named to avoid clashing with the pgx import)
 │       └── retry/             # capped exponential backoff with jitter
