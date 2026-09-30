@@ -751,3 +751,11 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Harness mistakes caught before they reached the docs:** a late-answer check that flagged the legitimate early-closing answer (5 false violations; the rule was read from the Lua script, then fixed with a test); reports written outside the repo because the default path depended on the working directory; and a report picked by timestamp that turned out to be the wrong run, caught by reading each report's contents.
 - **Estimates corrected by measurement:** the answer script costs ≈ 62 µs (estimated 20–25), so the Redis ceiling is ≈ 16,000 answers/s (estimated 40,000). Memory per connection ≈ 25 KB heap / 41 KB resident.
 - **Verification:** every cited number traces to a committed report, a profile, or a metric read during a run.
+
+### AI-041: Keeping the token in the URL (D15)
+
+- **Date / phase:** 2026-09-30 · P5 Stack and verification
+- **Decision point:** after the task-29 leak, the AI offered to move the WebSocket token from the query string into the `Sec-WebSocket-Protocol` header.
+- **My decision:** "I think for now it's fine, since we wanted to demonstrate the realtime communication first." The token stays in the URL; the `emerg` error log covers the known leak path; the header move is a recorded follow-up.
+- **Why this is acceptable:** tokens last 15 minutes and are dev-issued; the access log never has query strings; the remaining risk is only an nginx error line, which the log level now suppresses.
+

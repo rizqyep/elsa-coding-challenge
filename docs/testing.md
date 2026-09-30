@@ -85,6 +85,6 @@ These replace the estimates in [non-functional §1](system-design/non-functional
 
 ## 6. What's left open
 
-- **Tokens in the WebSocket URL (D15).** Any nginx error line quotes the URL, so the only safe setting is an error log that records almost nothing. Moving the token into the `Sec-WebSocket-Protocol` header would remove the trade-off. That's a protocol change for the owner to decide.
+- **Tokens in the WebSocket URL (D15).** Any nginx error line quotes the URL, so the only safe setting is an error log that records almost nothing. Moving the token into the `Sec-WebSocket-Protocol` header would remove the trade-off. That's a protocol change; the owner kept the query-string token for this build (the focus is the real-time path) and left the header move as a follow-up.
 - **10,000 in one room needs a distributed load test** to confirm client-observed latency (§4.4).
 - **Gateway writes:** each message is one write syscall per socket. If a room outgrows its gateways, batching writes per connection is the first optimisation.
