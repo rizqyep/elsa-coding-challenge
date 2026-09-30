@@ -60,8 +60,8 @@ Needs Go 1.26+ and Node 22+ in addition to Docker.
 
 | Command | What it runs | Time |
 |---|---|---|
-| `make check` | Lint (golangci-lint with gosec, oxlint, tsc), unit tests with the race detector, contract validation, generated-code freshness | ~1 min |
-| `make test-integration` | Every Redis script and repository against real Redis and PostgreSQL, with Toxiproxy faults | ~2 min |
+| `make check` | Lint (golangci-lint with gosec, oxlint, tsc), unit tests with the race detector, contract validation, generated-code freshness | ~30 s |
+| `make test-integration` | Every Redis script and repository against real Redis and PostgreSQL, with Toxiproxy faults | ~30 s |
 | `make test-e2e` | End-to-end and fault tests against the running stack (`make up PROFILES=chaos` first) | ~5 min |
 
 Critical code was written test-first, and every critical rule was checked by breaking it on purpose and confirming a test failed. [`docs/testing.md`](docs/testing.md) describes each test layer.

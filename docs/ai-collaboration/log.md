@@ -2,7 +2,7 @@
 
 One entry per significant use of AI. Each entry records what I asked, what the AI produced, what I decided, and how it was checked.
 
-Tool for all entries so far: Claude Code (Claude Opus 5.5).
+Tool for all entries: Claude Code (Claude Opus 5.5), which also drove Playwright for the browser checks.
 
 ---
 
@@ -758,4 +758,14 @@ Tool for all entries so far: Claude Code (Claude Opus 5.5).
 - **Decision point:** after the task-29 leak, the AI offered to move the WebSocket token from the query string into the `Sec-WebSocket-Protocol` header.
 - **My decision:** "I think for now it's fine, since we wanted to demonstrate the realtime communication first." The token stays in the URL; the `emerg` error log covers the known leak path; the header move is a recorded follow-up.
 - **Why this is acceptable:** tokens last 15 minutes and are dev-issued; the access log never has query strings; the remaining risk is only an nginx error line, which the log level now suppresses.
+
+## Submission
+
+### AI-042: README and AI collaboration docs (task-30, task-31)
+
+- **Date / phase:** 2026-09-30 · P6 Submission
+- **My direction:** do task-30 and task-31; the final review (task-32) is mine.
+- **What the AI produced:** the expanded README; a rewrite of `index.md` for the whole project; an "AI Collaboration in Design" section in the system design README, which the brief requires in the design documents themselves; one-line code pointers per package.
+- **What it caught in its own draft:** three wrong log citations, found by re-reading each cited entry before committing; a README timing (integration ~2 min) that measured 29 s; and an empty `tracing` package left over from D17.
+- **How the README was verified:** a fresh clone under a separate Compose project, so it got clean volumes instead of reusing mine. `make up`, the README's three steps in a real browser, `make check`, the integration suite, and a small sim, all from the clone. The one thing not re-measured is the cold 4-minute image build, because Docker's layer cache is shared; the task file says so.
 
